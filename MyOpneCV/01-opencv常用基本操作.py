@@ -1,8 +1,11 @@
 import cv2
 import matplotlib.pyplot as plt
+
 '''
 彩色图片操作示例
 '''
+
+
 def read_color_picture():
     # 读取图片
     img = cv2.imread('images/color-img.png')
@@ -106,6 +109,28 @@ def read_bgr():
     except Exception as e:
         print(f"An error occurred: {e}")
 
+# 对图片进行像素扩大化：小图变大图
+def enlarge_image():
+
+    # 读取图像
+    image = cv2.imread('images/pengge.jpg')
+
+    # 获取图像的原始尺寸
+    height, width = image.shape[:2]
+
+    # 设置新的尺寸，例如将图像放大到原来的2倍
+    new_width = int(width * 10)
+    new_height = int(height * 10)
+
+    # 使用cv2.resize()进行图像缩放
+    # 第三个参数是插值方法，这里使用cv2.INTER_LINEAR
+    resized_image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+
+    # # 显示结果=
+    # cv2.imshow('Resized Image', resized_image)
+    # cv2.waitKey(0)
+    cv2.imwrite('images/penggeBig.jpg', resized_image)
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    read_bgr()
+    enlarge_image()

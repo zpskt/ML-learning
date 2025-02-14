@@ -65,7 +65,7 @@ def main(image_path='images/many_face.jpg', cascade_path='data/haarcascades/haar
                 break
 
 
-        # # 创建画布
+        # 创建画布
         # plt.figure(figsize=(10, 10))
         # plt.suptitle('Face Recognition', fontsize=16, fontweight='bold')
         #

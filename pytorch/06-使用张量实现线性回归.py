@@ -50,8 +50,8 @@ def main():
     # NumPy不支持直接处理GPU上的数据，因此需要先将张量从GPU移动到CPU再进行转换。
     print(w)
     print(b)
-    plt.scatter(x.detach().numpy(), y.detach().numpy())
-    plt.plot(x.detach().numpy(), w.detach().numpy() * x.detach().numpy() + b.detach().numpy(), c='r')
+    plt.scatter(x.numpy(), y.numpy())
+    plt.plot(x.numpy(), w.detach().numpy() * x.numpy() + b.detach().numpy(), c='r')
     plt.show()
 
 
