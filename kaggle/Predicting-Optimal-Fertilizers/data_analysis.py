@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from collections import Counter
 
 # 加载训练数据集
 df_train = pd.read_csv('data/train.csv')
@@ -77,7 +78,6 @@ def target_column_analysis():
     plt.title('Distribution of Fertilizer Names')
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == '__main__':
     # basic_info()
