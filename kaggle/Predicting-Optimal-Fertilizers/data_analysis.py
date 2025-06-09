@@ -6,8 +6,8 @@ import seaborn as sns
 from collections import Counter
 
 # 加载训练数据集
-df_train = pd.read_csv('data/train.csv')
-# df_train = pd.read_csv('data/processed_train.csv')
+# df_train = pd.read_csv('data/train.csv')
+df_train = pd.read_csv('data/processed_train.csv')
 
 def basic_info():
     '''
@@ -109,10 +109,10 @@ def feature_distribution_by_target():
     # 明确排除 'id' 和目标列（如果有）
     if 'id' in numeric_cols:
         numeric_cols.remove('id')
+
     # 排除可能包含的目标列本身（如果有）
     if 'Fertilizer Name' in numeric_cols:
         numeric_cols.remove('Fertilizer Name')
-
     # 按目标变量分组并计算均值
     grouped = df_train.groupby('Fertilizer Name')[numeric_cols].mean()
 
@@ -183,6 +183,6 @@ def target_column_analysis():
 if __name__ == '__main__':
     # basic_info()
     # plot_numeric_histograms()
-    plot_categorical_histograms()
-    # feature_distribution_by_target()
+    # plot_categorical_histograms()
+    feature_distribution_by_target()
     # categorical_distribution_by_target()
