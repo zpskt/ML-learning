@@ -1,6 +1,7 @@
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 import os
 
 # 获取当前脚本所在目录
@@ -67,6 +68,17 @@ def preprocess_and_save(input_file='train.csv', target_col='Fertilizer Name'):
     if 'id' in df.columns:
         df = df.drop(columns=['id'])
     print(f"✅ 已加载数据 {file_path}")
+
+
+
+    # 标准化数值型字段
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if target_col in numeric_cols:
+        numeric_cols.remove(target_col)  # 排除目标列
+
+    scaler = StandardScaler()
+    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    print(f"✅ 完成对数值型字段的标准化处理：{numeric_cols}")
 
     # 编码object类型字段
     df_encoded = encode_object_columns(df)

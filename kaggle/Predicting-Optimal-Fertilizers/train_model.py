@@ -4,12 +4,16 @@ from collections import Counter
 import pandas as pd
 import torch
 import torch.nn as nn
+from lightgbm import LGBMClassifier
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
 from torch.utils.tensorboard import SummaryWriter
 import tensorboard
+from xgboost import XGBClassifier
+
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(current_dir, 'data')
@@ -41,13 +45,9 @@ class MLP(nn.Module):
         # 初始化神经网络结构
         self.net = nn.Sequential(
             nn.Linear(input_dim, 128),
-            nn.BatchNorm1d(128),
-            nn.GELU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, 64),
-            nn.GELU(),
-            nn.Dropout(0.3),
-            nn.Linear(64, num_classes)
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, num_classes)
         )
 
     def forward(self, x):
@@ -63,7 +63,7 @@ def prepare_data():
     df = pd.read_csv(file_path)
 
     # 特征和标签
-    X = df.drop(columns=['Fertilizer Name'])
+    X = df.drop(columns=['Fertilizer Name','id'])
     y = df['Fertilizer Name'].values
     '''
     人工校验数据
@@ -71,13 +71,25 @@ def prepare_data():
     # 检查分类是否均衡
     print(Counter(y))
 
+    print("原始列名:", X.columns.tolist())
+
     # 定义预处理器：类别型列做 OneHot，数值型列标准化
+    # 明确指定类别型和数值型列  Temparature,Humidity,Moisture,Soil Type,Crop Type,Nitrogen,Potassium,Phosphorous
+    categorical_cols = ['Soil Type', 'Crop Type']
+    numerical_cols = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']  # 替换为你的真实数值列
+
     preprocessor = ColumnTransformer([
-        ('cat', OneHotEncoder(handle_unknown='ignore'), ['Soil Type', 'Crop Type']),
-        ('num', StandardScaler(), X.columns.difference(['Soil Type', 'Crop Type']))
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+        ('num', StandardScaler(), numerical_cols)
     ])
-    # todo 这里的列变得非常多，需要改
+
     X_processed = preprocessor.fit_transform(X)
+
+    # 检查OneHot 编码后的稀疏矩阵是否被正确转换为稠密矩阵？
+    # 特征中是否有大量缺失值或异常值？
+    print("X_processed type:", type(X_processed))
+    print("X_processed shape:", X_processed.shape)
+    print("X_processed sample:\n", X_processed[:5])
 
     # 编码标签（虽然你已处理过，但确保是整数形式）
     le = LabelEncoder()
@@ -90,8 +102,8 @@ def prepare_data():
     train_dataset = FertilizerDataset(X_train, y_train)
     val_dataset = FertilizerDataset(X_val, y_val)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64)
 
     return train_loader, val_loader, len(le.classes_)
 
@@ -112,7 +124,7 @@ def train_torch_model():
     # 初始化最佳准确率
     best_acc = 0.0
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 'min', patience=3)
 
     for epoch in range(epochs):
         # 将模型设置为训练模式，以便启用dropout、batch normalization等在训练时需要的特性
@@ -150,6 +162,9 @@ def train_torch_model():
                 outputs = model(X_batch)
                 # 通过获取每个输出行中最大值的索引来确定预测标签
                 preds = torch.argmax(outputs, dim=1)
+                # 打印第一个 batch 的真实标签和预测值
+                # print("真实标签:", y_batch.cpu().numpy())
+                # print("预测标签:", preds.cpu().numpy())
                 # 将真实标签从Tensor转换为numpy数组，并添加到y_true列表中
                 y_true.extend(y_batch.cpu().numpy())
                 # 将预测标签从Tensor转换为numpy数组，并添加到y_pred列表中
@@ -179,6 +194,64 @@ def train_torch_model():
     print("🎉 训练完成！")
     return model
 
+def tradition_model():
+    '''
+    为了判断是否是深度学习模型的问题，可以快速测试一个传统分类器（如 RandomForestClassifier）：
+    如果传统方法表现良好，则说明数据本身是可学的，问题出在神经网络模型的设计或训练上。
+    :return:
+    '''
+
+    file_path = os.path.join(data_dir, 'processed_train.csv')
+    df = pd.read_csv(file_path)
+
+    # 特征和标签
+    X = df.drop(columns=['Fertilizer Name','Temparature','Nitrogen'])
+    y = df['Fertilizer Name'].values
+
+    # 定义预处理器：类别型列做 OneHot，数值型列标准化
+    # 明确指定类别型和数值型列  Temparature,Humidity,Moisture,Soil Type,Crop Type,Nitrogen,Potassium,Phosphorous
+    # categorical_cols = ['Soil Type', 'Crop Type']
+    # numerical_cols = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']  # 替换为你的真实数值列
+    #
+    # preprocessor = ColumnTransformer([
+    #     ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+    #     ('num', StandardScaler(), numerical_cols)
+    # ])
+    #
+    # X_processed = preprocessor.fit_transform(X)
+
+    # 编码标签（虽然你已处理过，但确保是整数形式）
+    le = LabelEncoder()
+    y = le.fit_transform(y)
+
+    # 划分训练集和验证集
+    X_train, X_val, y_train, y_val = train_test_split(X , y, test_size=0.2, random_state=42)
+
+    # clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42) 17.3%
+    # XGBoost 示例
+    # 初始化XGBClassifier模型，配置特定的参数以优化模型性能
+    clf = XGBClassifier(
+        n_estimators=1000,          # 设置学习器的数量，增加模型复杂度
+        learning_rate=0.01,        # 设置学习率，平衡模型训练速度与性能
+        max_depth=5,                # 设置树的最大深度，控制模型的拟合能力
+        subsample=0.6,              # 设置样本采样比例，减少过拟合风险
+        colsample_bytree=0.5,       # 设置列采样比例，提高模型泛化能力
+        random_state=42             # 设置随机种子，确保模型结果的可重复性
+    )
+
+    # # LightGBM 示例
+    # clf = LGBMClassifier(
+    #     n_estimators=1000,
+    #     learning_rate=0.05,
+    #     max_depth=6,
+    #     subsample=0.8,
+    #     colsample_bytree=0.8,
+    #     random_state=42
+    # )
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_val)
+    print("Val Accuracy:", accuracy_score(y_val, y_pred))
 
 if __name__ == '__main__':
+    # tradition_model()
     trained_model = train_torch_model()
