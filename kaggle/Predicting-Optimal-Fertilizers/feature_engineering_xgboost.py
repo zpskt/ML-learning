@@ -62,7 +62,8 @@ def add_agricultural_features(df):
 
     df['Crop_Nitrogen_Preference'] = df['Crop Type'].map(crop_n_preference).fillna(0.5)
     df['Weighted_N'] = df['Nitrogen'] * df['Crop_Nitrogen_Preference']
-
+    df['N_sqrt'] = np.sqrt(df['Nitrogen'])
+    df['NK_ratio'] = df['Nitrogen'] / (df['Potassium'] + 1e-5)
     return df
 
 # -----------------------------
@@ -215,6 +216,7 @@ def load_data_and_preprocess(data='train.csv'):
 
 
 
+
 def main():
     print("🚀 启动特征工程与模型训练流程")
     X_train, X_val, y_train, y_val = load_data_and_preprocess()
@@ -227,9 +229,9 @@ def main():
     model = XGBClassifier(
         n_estimators=3000,
         learning_rate=0.05,
-        max_depth=7,
+        max_depth=6,
         subsample=0.7,
-        colsample_bytree=0.6,
+        colsample_bytree=0.7,
         eval_metric='mlogloss',
         early_stopping_rounds=20,
         use_label_encoder=False,
@@ -248,87 +250,82 @@ def main():
     # -----------------------------
     # 5.2 模型训练：LightGbm
     # -----------------------------
-    # print("\n💡 正在训练 LightGBM 模型...")
-    #
-    # lgb_model = LGBMClassifier(
-    #     n_estimators=3000,
-    #     learning_rate=0.1,
-    #     max_depth=7,
-    #     num_leaves=50,
-    #     subsample=0.7,
-    #     colsample_bytree=0.6,
-    #     objective='multiclass',
-    #     num_class=len(le.classes_),  # 自动识别类别数
-    #     eval_metric='multi_logloss',
-    #     early_stopping_rounds=20,
-    #     verbose=-1,
-    #     random_state=42
-    # )
-    #
-    # lgb_model.fit(
-    #     X_train, y_train,
-    #     eval_set=[(X_val, y_val)]
-    # )
-    # print("\n💡 训练 LightGBM 模型完毕")
+    print("\n💡 正在训练 LightGBM 模型...")
+
+    lgb_model = LGBMClassifier(
+        n_estimators=3000,
+        learning_rate=0.05,
+        max_depth=7,
+        num_leaves=50,
+        subsample=0.7,
+        colsample_bytree=0.6,
+        objective='multiclass',
+        num_class=len(le.classes_),  # 自动识别类别数
+        eval_metric='multi_logloss',
+        early_stopping_rounds=20,
+        verbose=-1,
+        random_state=42
+    )
+
+    lgb_model.fit(
+        X_train, y_train,
+        eval_set=[(X_val, y_val)]
+    )
+    print("\n💡 训练 LightGBM 模型完毕")
 
     # -----------------------------
     # 模型训练：PyTorch MLP
     # -----------------------------
-    # print("\n🧠 正在训练 PyTorch 神经网络模型...")
-    #
-    # X_train_torch = torch.tensor(X_train, dtype=torch.float32)
-    # X_val_torch = torch.tensor(X_val, dtype=torch.float32)
-    # y_train_torch = torch.tensor(y_train, dtype=torch.long)
-    # y_val_torch = torch.tensor(y_val, dtype=torch.long)
-    #
-    # dataset = TensorDataset(X_train_torch, y_train_torch)
-    # loader = DataLoader(dataset, batch_size=32, shuffle=True)
-    #
-    # mlp = MLP(X_train.shape[1], len(le.classes_))
-    # criterion = nn.CrossEntropyLoss()
-    # optimizer = optim.Adam(mlp.parameters(), lr=0.001)
+    print("\n🧠 正在训练 PyTorch 神经网络模型...")
 
-    # train_mlp_model(mlp, criterion, optimizer, loader, epochs=50)
+    X_train_torch = torch.tensor(X_train, dtype=torch.float32)
+    X_val_torch = torch.tensor(X_val, dtype=torch.float32)
+    y_train_torch = torch.tensor(y_train, dtype=torch.long)
+    y_val_torch = torch.tensor(y_val, dtype=torch.long)
+
+    dataset = TensorDataset(X_train_torch, y_train_torch)
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+    mlp = MLP(X_train.shape[1], len(le.classes_))
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(mlp.parameters(), lr=0.05)
+
+    train_mlp_model(mlp, criterion, optimizer, loader, epochs=50)
 
     # -----------------------------
     # 模型训练：PyTorch Autoencoder
     # -----------------------------
-    # print("\n🔍 正在训练 PyTorch 自动编码器...")
-    #
-    # ae_dataset = TensorDataset(X_train_torch, X_train_torch)
-    # ae_loader = DataLoader(ae_dataset, batch_size=32, shuffle=True)
-    #
-    # ae = Autoencoder(X_train.shape[1], 32)
-    # criterion_ae = nn.MSELoss()
-    # optimizer_ae = optim.Adam(ae.parameters(), lr=0.001)
-    #
-    # train_autoencoder(ae, criterion_ae, optimizer_ae, ae_loader, epochs=50)
-    #
-    # with torch.no_grad():
-    #     X_train_encoded = ae.encoder(X_train_torch).numpy()
-    #     X_val_encoded = ae.encoder(X_val_torch).numpy()
-    #
-    # ae_classifier = LogisticRegression()
-    # ae_classifier.fit(X_train_encoded, y_train)
+    print("\n🔍 正在训练 PyTorch 自动编码器...")
+
+    ae_dataset = TensorDataset(X_train_torch, X_train_torch)
+    ae_loader = DataLoader(ae_dataset, batch_size=32, shuffle=True)
+
+    ae = Autoencoder(X_train.shape[1], 32)
+    criterion_ae = nn.MSELoss()
+    optimizer_ae = optim.Adam(ae.parameters(), lr=0.05)
+
+    train_autoencoder(ae, criterion_ae, optimizer_ae, ae_loader, epochs=50)
+
+    with torch.no_grad():
+        X_train_encoded = ae.encoder(X_train_torch).numpy()
+        X_val_encoded = ae.encoder(X_val_torch).numpy()
+
+    ae_classifier = LogisticRegression()
+    ae_classifier.fit(X_train_encoded, y_train)
 
     # -----------------------------
     # 多模型集成预测
     # -----------------------------
-    # print("\n📋 多模型评估中...")
-    #
-    # xgb_proba = model.predict_proba(X_val)
-    # # lgb_proba = lgb_model.predict_proba(X_val)
-    # # mlp_proba = mlp(X_val_torch).softmax(dim=1).detach().numpy()
-    # ae_proba = ae_classifier.predict_proba(X_val_encoded)
-    #
-    # avg_proba = (xgb_proba + ae_proba) / 4
-    # ensemble_pred = np.argmax(avg_proba, axis=1)
-    #
-    # acc = accuracy_score(y_val, ensemble_pred)
-    # print(f"\n✅ 集成模型验证集准确率: {acc:.4f}")
-    # print("\n📋 集成模型分类报告:")
-    # print(classification_report(y_val, ensemble_pred))
-
+    print("\n📋 多模型评估中...")
+    # 使用多个模型记性预测
+    xgb_pred = model.predict(X_val)
+    lgb_pred = lgb_model.predict(X_val)
+    mlp_pred = mlp(X_val_torch).argmax(dim=1).detach().numpy()
+    ae_pred = ae_classifier.predict(X_val_encoded)
+    avg_pred = (xgb_pred + lgb_pred + mlp_pred + ae_pred) / 4
+    avg_pred = np.argmax(avg_pred, axis=1)
+    acc = accuracy_score(y_val, avg_pred)
+    print(f"\n✅ 多模型集成验证集准确率: {acc:.4f}")
 
     # -----------------------------
     # 6.1 单一结果模型评估
@@ -478,6 +475,6 @@ def generate_submission(file_name='test.csv', output_file='submission.csv', top_
 
 
 if __name__ == "__main__":
-    # main()
-    generate_submission()
+    main()
+    # generate_submission()
     # val()
