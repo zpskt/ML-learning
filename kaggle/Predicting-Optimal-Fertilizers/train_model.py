@@ -253,5 +253,5 @@ def tradition_model():
     print("Val Accuracy:", accuracy_score(y_val, y_pred))
 
 if __name__ == '__main__':
-    # tradition_model()
-    trained_model = train_torch_model()
+    tradition_model()
+    # trained_model = train_torch_model()
