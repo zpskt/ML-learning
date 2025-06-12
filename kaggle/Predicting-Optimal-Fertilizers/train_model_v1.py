@@ -1,18 +1,19 @@
 import os
 from collections import Counter
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from lightgbm import LGBMClassifier
+from matplotlib import pyplot as plt
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
 from torch.utils.tensorboard import SummaryWriter
-import tensorboard
 from xgboost import XGBClassifier
+
+from data_preprocessing import generate_data_report
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,7 +64,7 @@ def prepare_data():
     df = pd.read_csv(file_path)
 
     # 特征和标签
-    X = df.drop(columns=['Fertilizer Name','id'])
+    X = df.drop(columns=['Fertilizer Name', 'id'])
     y = df['Fertilizer Name'].values
     '''
     人工校验数据
@@ -194,6 +195,7 @@ def train_torch_model():
     print("🎉 训练完成！")
     return model
 
+
 def tradition_model():
     '''
     为了判断是否是深度学习模型的问题，可以快速测试一个传统分类器（如 RandomForestClassifier）：
@@ -201,44 +203,57 @@ def tradition_model():
     :return:
     '''
 
-    file_path = os.path.join(data_dir, 'processed_train.csv')
+    file_path = os.path.join(data_dir, 'train.csv')
     df = pd.read_csv(file_path)
-
+    df = add_agricultural_features(df)
     # 特征和标签
-    X = df.drop(columns=['Fertilizer Name','Temparature','Nitrogen'])
+    X = df.drop(columns=['Fertilizer Name', 'id','Soil Type'])
     y = df['Fertilizer Name'].values
-
+    print(df.describe())
     # 定义预处理器：类别型列做 OneHot，数值型列标准化
     # 明确指定类别型和数值型列  Temparature,Humidity,Moisture,Soil Type,Crop Type,Nitrogen,Potassium,Phosphorous
     # categorical_cols = ['Soil Type', 'Crop Type']
-    # numerical_cols = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']  # 替换为你的真实数值列
-    #
-    # preprocessor = ColumnTransformer([
-    #     ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
-    #     ('num', StandardScaler(), numerical_cols)
-    # ])
-    #
-    # X_processed = preprocessor.fit_transform(X)
+    categorical_cols = [ 'Crop Type','Sugarcane_Clayey']
+    # columns_to_exclude = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']
+    columns_to_exclude = []
+    # Humidity、 Nitrogen Phosphorous N——sqrt影响不大
+    # Moisture NPK 比较小
+    numerical_cols = [col for col in X.columns if col not in categorical_cols and col not in columns_to_exclude]
+    preprocessor = ColumnTransformer([
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
+        ('num', StandardScaler(), numerical_cols)
+    ])
+
+    X_processed = preprocessor.fit_transform(X)
+
+    # generate_data_report(df, target_col='Fertilizer Name')
 
     # 编码标签（虽然你已处理过，但确保是整数形式）
     le = LabelEncoder()
     y = le.fit_transform(y)
 
     # 划分训练集和验证集
-    X_train, X_val, y_train, y_val = train_test_split(X , y, test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_processed, y, test_size=0.2, random_state=42)
 
     # clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42) 17.3%
     # XGBoost 示例
     # 初始化XGBClassifier模型，配置特定的参数以优化模型性能
+    print("XGBoost 模型训练中...")
     clf = XGBClassifier(
-        n_estimators=1000,          # 设置学习器的数量，增加模型复杂度
-        learning_rate=0.01,        # 设置学习率，平衡模型训练速度与性能
-        max_depth=5,                # 设置树的最大深度，控制模型的拟合能力
-        subsample=0.6,              # 设置样本采样比例，减少过拟合风险
-        colsample_bytree=0.5,       # 设置列采样比例，提高模型泛化能力
-        random_state=42             # 设置随机种子，确保模型结果的可重复性
+        n_estimators=500,
+        learning_rate=0.1,
+        max_depth=5,
+        min_child_weight=3,
+        gamma=0.1,
+        subsample=0.8,
+        colsample_bytree=0.7,
+        eval_metric='mlogloss',
+        use_label_encoder=False,
+        tree_method='hist'
     )
-
+    eval_set = [(X_val, y_val)]
+    clf.fit(X_train, y_train, early_stopping_rounds=20, eval_set=eval_set, verbose=False)
+    print("XGBoost训练结束")
     # # LightGBM 示例
     # clf = LGBMClassifier(
     #     n_estimators=1000,
@@ -248,9 +263,72 @@ def tradition_model():
     #     colsample_bytree=0.8,
     #     random_state=42
     # )
-    clf.fit(X_train, y_train)
     y_pred = clf.predict(X_val)
     print("Val Accuracy:", accuracy_score(y_val, y_pred))
+    print(classification_report(y_val, y_pred))
+    import seaborn as sns
+
+    sns.heatmap(confusion_matrix(y_val, y_pred), annot=True, fmt='d', cmap='Blues')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.show()
+
+# -----------------------------
+# 特征构造
+# -----------------------------
+def add_agricultural_features(df):
+    df['Moisture_Squared'] = df['Moisture'] ** 3
+    df['Phosphorous_Squared'] =df['Phosphorous']**2
+    df['Nitrogen_Squared'] =df['Nitrogen']**2
+    df['Temparature_Squared'] =df['Temparature']**2
+    df['Humidity_Squared'] =df['Humidity']**2
+    df['NPK_Sum'] = df['Nitrogen'] + df['Phosphorous'] + df['Potassium']
+    df['N_P_Ratio'] = df['Nitrogen'] / (df['Phosphorous'] + 1e-5)
+    df['P_K_Ratio'] = df['Phosphorous'] / (df['Potassium'] + 1e-5)
+    df['Env_Index'] = df['Temparature'] * df['Humidity'] * df['Moisture']
+    df['Crop_Soil_Interaction'] = df['Crop Type'] + '_' + df['Soil Type']
+    crop_soil_preference = {
+        ('Wheat', 'Clay'): 1.2,
+        ('Maize', 'Loam'): 1.3,
+        ('Millets', 'Sandy'): 1.5,
+    }
+
+    df['Crop_Soil_Preference'] = df.apply(
+        lambda row: crop_soil_preference.get((row['Crop Type'], row['Soil Type']), 1.0), axis=1)
+    df['Weighted_Nitrogen'] = df['Nitrogen'] * df['Crop_Soil_Preference']
+    """
+    构造农业领域相关特征
+    """
+    # df['NPK_Sum'] = df['Nitrogen'] + df['Phosphorous'] + df['Potassium']
+    # df['N_P_Ratio'] = df['Nitrogen'] / (df['Phosphorous'] + 1e-5)
+    # df['P_K_Ratio'] = df['Phosphorous'] / (df['Potassium'] + 1e-5)
+    # df['Env_Index'] = df['Temparature'] * df['Humidity'] * df['Moisture'] * 20
+    # df['Fertility_Score'] = (
+    #         df['Nitrogen'] * 0.3 +
+    #         df['Phosphorous'] * 0.3 +
+    #         df['Potassium'] * 0.4
+    # )
+    # TODO 用模型辅助自己学习权重
+    # crop_n_preference = {
+    #     'Wheat': 0.8,
+    #     'Maize': 0.7,
+    #     'Oil seeds': 0.3,
+    #     'Paddy': 0.5,
+    #     'Cotton': 0.6,
+    #     'Barley': 0.7,
+    #     'Millets': 0.5,
+    #     'Sugarcane': 0.4,
+    #     'Ground Nuts': 0.4,
+    #     'Tobacco': 0.5,
+    #     'Pulses': 0.4
+    # }
+    # df['Crop_Nitrogen_Preference'] = df['Crop Type'].map(crop_n_preference).fillna(0.5)
+    # df['Weighted_N'] = df['Nitrogen'] * df['Crop_Nitrogen_Preference']
+    # df['N_sqrt'] = np.sqrt(df['Nitrogen'])
+    # df['NK_ratio'] = df['Nitrogen'] / (df['Potassium'] + 1e-5)
+    return df
+
 
 if __name__ == '__main__':
     tradition_model()

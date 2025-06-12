@@ -1,8 +1,13 @@
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
 import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+import shap
+from xgboost import XGBClassifier
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -90,6 +95,8 @@ def preprocess_and_save(input_file='train.csv', target_col='Fertilizer Name'):
     X_train, X_val, y_train, y_val = split_train_val(df_encoded, target_col)
 
     return X_train, X_val, y_train, y_val
+
+
 
 
 if __name__ == '__main__':

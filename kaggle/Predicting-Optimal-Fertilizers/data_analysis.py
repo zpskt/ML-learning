@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 
+import shap
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
+
 # 加载训练数据集
 # df_train = pd.read_csv('data/train.csv')
 df_train = pd.read_csv('data/processed_train.csv')
@@ -179,6 +183,126 @@ def target_column_analysis():
     plt.title('Distribution of Fertilizer Names')
     plt.tight_layout()
     plt.show()
+
+def plot_feature_vs_target(df, target_col):
+    """
+    绘制目标列与所有数值型特征之间的关系图
+
+    参数:
+        df (pd.DataFrame): 数据框
+        target_col (str): 目标列名称（如 'Fertilizer Name'）
+    """
+    # 检查目标列是否存在
+    if target_col not in df.columns:
+        raise ValueError(f"目标列 '{target_col}' 不存在于 DataFrame 中")
+
+    # 设置绘图风格
+    sns.set(style="whitegrid")
+
+    # 类别分布图
+    plt.figure(figsize=(10, 6))
+    sns.countplot(x=target_col, data=df, palette="Set2")
+    plt.title(f'{target_col} 类别分布')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    # 数值型特征与目标的关系图
+    for col in df.columns:
+        if col != target_col and df[col].dtype != 'object':
+            plt.figure(figsize=(10, 6))
+            sns.boxplot(x=target_col, y=col, data=df, palette="Set3")
+            plt.title(f'{col} vs {target_col}')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            plt.show()
+def generate_data_report(df, target_col='Fertilizer Name'):
+    """
+    生成完整的数据探索报告：
+        - 类别分布图
+        - 每个数值特征在不同类别下的分布（boxplot）
+        - 使用XGBoost + SHAP进行特征重要性分析
+    """
+    print("📊 开始生成数据探索报告...")
+
+    # 1. 绘制目标列与各数值特征的关系图
+    # plot_feature_vs_target(df, target_col)
+
+    # 2. 构建训练集并训练轻量模型用于特征重要性分析
+    print("🧠 训练XGBoost模型以评估特征重要性...")
+    y = df['Fertilizer Name'].values
+    # 编码标签（虽然你已处理过，但确保是整数形式）
+    le = LabelEncoder()
+    y = le.fit_transform(y)
+
+    X_train, X_val, y_train, y_val = train_test_split(
+        df.drop(columns=[target_col]),
+        y,
+        test_size=0.2,
+        random_state=42
+    )
+
+    # 数据预处理
+    numeric_features = X_train.select_dtypes(include=['number']).columns.tolist()
+    categorical_features = X_train.select_dtypes(include=['object']).columns.tolist()
+
+    preprocessor = ColumnTransformer([
+        ('num', StandardScaler(), numeric_features),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+    ])
+
+    X_train_processed = preprocessor.fit_transform(X_train)
+    X_val_processed = preprocessor.transform(X_val)
+
+    # 训练轻量模型
+    model = XGBClassifier(
+        n_estimators=200,
+        max_depth=5,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.7,
+        random_state=42
+    )
+    model.fit(X_train_processed, y_train)
+
+    # 3. 特征重要性可视化（SHAP）
+    print("🔍 生成特征重要性图表...")
+    explainer = shap.TreeExplainer(model)
+    try:
+        shap_values = explainer.shap_values(X_train_processed)
+
+        # 如果是多分类任务，取第一个类别的 SHAP 值
+        if isinstance(shap_values, list):
+            shap_values = shap_values[0]
+
+        # 确保 X_train 是稠密数组
+        if hasattr(X_train_processed, "toarray"):
+            X_train_dense = X_train_processed.toarray()
+        else:
+            X_train_dense = X_train_processed
+
+        # 获取正确的特征名称
+        def get_transformed_column_names(preprocessor, numeric_features, categorical_features):
+            transformers = []
+            for name, trans, cols in preprocessor.transformers_:
+                if trans == 'drop':
+                    continue
+                if name == 'cat':
+                    new_cols = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+                    transformers.extend(new_cols)
+                else:
+                    transformers.extend(cols)
+            return transformers
+
+        feature_names = get_transformed_column_names(preprocessor, numeric_features, categorical_features)
+
+        # 绘制 summary plot
+        shap.summary_plot(shap_values, X_train_dense, feature_names=feature_names, plot_type="bar")
+
+    except Exception as e:
+        print(f"⚠️ SHAP 图无法生成：{e}")
+
+    print("✅ 数据探索报告已完成。")
 
 if __name__ == '__main__':
     # basic_info()

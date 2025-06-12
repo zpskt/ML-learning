@@ -66,68 +66,6 @@ def add_agricultural_features(df):
     df['NK_ratio'] = df['Nitrogen'] / (df['Potassium'] + 1e-5)
     return df
 
-# -----------------------------
-# PyTorch Autoencoder
-# -----------------------------
-class Autoencoder(nn.Module):
-    def __init__(self, input_dim, encoding_dim):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, encoding_dim)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(encoding_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, input_dim)
-        )
-
-    def forward(self, x):
-        z = self.encoder(x)
-        x_recon = self.decoder(z)
-        return z, x_recon
-
-# 定义神经网络结构
-class MLP(nn.Module):
-    def __init__(self, input_dim, num_classes, hidden_dim=64):
-        super(MLP, self).__init__()
-        # 初始化神经网络结构
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, num_classes)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-# -----------------------------
-# 训练函数
-# -----------------------------
-def train_mlp_model(model, criterion, optimizer, dataloader, epochs=50):
-    model.train()
-    for epoch in range(epochs):
-        print(f" MLP Epoch {epoch+1}/{epochs}")
-        for x_batch, y_batch in dataloader:
-            out = model(x_batch)
-            loss = criterion(out, y_batch)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-
-def train_autoencoder(autoencoder, criterion_ae, optimizer_ae, dataloader, epochs=50):
-    autoencoder.train()
-    for epoch in range(epochs):
-        for x_batch, _ in dataloader:
-            _, recon = autoencoder(x_batch)
-            loss = criterion_ae(recon, x_batch)
-            optimizer_ae.zero_grad()
-            loss.backward()
-            optimizer_ae.step()
 
 def load_data_and_preprocess(data='train.csv'):
     '''
@@ -171,13 +109,7 @@ def load_data_and_preprocess(data='train.csv'):
     categorical_cols = ['Soil Type', 'Crop Type']
     numerical_cols = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']
     # 所有特征列中筛选出“既不是类别型也不是数值型”的列， 即构造的农业领域新特征（如 NPK 比例、环境因子等）
-    '''
-    这些农业特征为什么要单独处理？
-        因为：
-        它们已经经过人工构造，可能具有更强的非线性关系；
-        可能需要与原始数值特征一起标准化；
-        不属于原始的类别或数值特征，所以要单独提取出来用于后续预处理。
-    '''
+
     agri_feature_cols = [col for col in X.columns if col not in categorical_cols + numerical_cols]
 
     preprocessor = ColumnTransformer(
@@ -197,9 +129,6 @@ def load_data_and_preprocess(data='train.csv'):
     # 转换为 pandas DataFrame
     X_processed_df = pd.DataFrame(X_processed, columns=feature_names)
 
-    # ✅ 添加目标变量
-    # X_processed_df['Encoded_Label'] = y  # 编码后的 y（int 类型）
-
     # 如果你还想添加原始的 Fertilizer Name（字符串类型）也可以加上
     df_original = pd.read_csv(os.path.join(data_dir, 'train.csv'))
     original_labels = df_original['Fertilizer Name'].values
@@ -213,7 +142,6 @@ def load_data_and_preprocess(data='train.csv'):
     X_train, X_val, y_train, y_val = train_test_split(X_processed, y, test_size=0.2, random_state=42, stratify=y)
     print("✅ 数据处理完毕")
     return X_train, X_val, y_train, y_val
-
 
 
 
@@ -247,88 +175,9 @@ def main():
     print("\n🌳 训练 XGBoost 模型完毕")
     # 保存模型
     model.save_model('xgboost_model.json')
-    # -----------------------------
-    # 5.2 模型训练：LightGbm
-    # -----------------------------
-    print("\n💡 正在训练 LightGBM 模型...")
-
-    lgb_model = LGBMClassifier(
-        n_estimators=3000,
-        learning_rate=0.05,
-        max_depth=7,
-        num_leaves=50,
-        subsample=0.7,
-        colsample_bytree=0.6,
-        objective='multiclass',
-        num_class=len(le.classes_),  # 自动识别类别数
-        eval_metric='multi_logloss',
-        early_stopping_rounds=20,
-        verbose=-1,
-        random_state=42
-    )
-
-    lgb_model.fit(
-        X_train, y_train,
-        eval_set=[(X_val, y_val)]
-    )
-    print("\n💡 训练 LightGBM 模型完毕")
 
     # -----------------------------
-    # 模型训练：PyTorch MLP
-    # -----------------------------
-    print("\n🧠 正在训练 PyTorch 神经网络模型...")
-
-    X_train_torch = torch.tensor(X_train, dtype=torch.float32)
-    X_val_torch = torch.tensor(X_val, dtype=torch.float32)
-    y_train_torch = torch.tensor(y_train, dtype=torch.long)
-    y_val_torch = torch.tensor(y_val, dtype=torch.long)
-
-    dataset = TensorDataset(X_train_torch, y_train_torch)
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
-
-    mlp = MLP(X_train.shape[1], len(le.classes_))
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(mlp.parameters(), lr=0.05)
-
-    train_mlp_model(mlp, criterion, optimizer, loader, epochs=50)
-
-    # -----------------------------
-    # 模型训练：PyTorch Autoencoder
-    # -----------------------------
-    print("\n🔍 正在训练 PyTorch 自动编码器...")
-
-    ae_dataset = TensorDataset(X_train_torch, X_train_torch)
-    ae_loader = DataLoader(ae_dataset, batch_size=32, shuffle=True)
-
-    ae = Autoencoder(X_train.shape[1], 32)
-    criterion_ae = nn.MSELoss()
-    optimizer_ae = optim.Adam(ae.parameters(), lr=0.05)
-
-    train_autoencoder(ae, criterion_ae, optimizer_ae, ae_loader, epochs=50)
-
-    with torch.no_grad():
-        X_train_encoded = ae.encoder(X_train_torch).numpy()
-        X_val_encoded = ae.encoder(X_val_torch).numpy()
-
-    ae_classifier = LogisticRegression()
-    ae_classifier.fit(X_train_encoded, y_train)
-
-    # -----------------------------
-    # 多模型集成预测
-    # -----------------------------
-    print("\n📋 多模型评估中...")
-    # 使用多个模型记性预测
-    xgb_pred = model.predict(X_val)
-    lgb_pred = lgb_model.predict(X_val)
-    mlp_pred = mlp(X_val_torch).argmax(dim=1).detach().numpy()
-    ae_pred = ae_classifier.predict(X_val_encoded)
-    avg_pred = (xgb_pred + lgb_pred + mlp_pred + ae_pred) / 4
-    avg_pred = np.argmax(avg_pred, axis=1)
-    acc = accuracy_score(y_val, avg_pred)
-    print(f"\n✅ 多模型集成验证集准确率: {acc:.4f}")
-
-    # -----------------------------
-    # 6.1 单一结果模型评估
+    # 单一结果模型评估
     # -----------------------------
     print("\n📋 单一结果模型评估中...")
     y_pred = model.predict(X_val)
@@ -338,19 +187,6 @@ def main():
     print("\n📋 分类报告:")
     print(classification_report(y_val, y_pred))
 
-    # -----------------------------
-    # 6.2 多结果模型评估
-    # -----------------------------
-    print("\n📋 多结果模型评估中...")
-    y_proba = model.predict_proba(X_val)
-    # 获取 top-3 的预测类别索引
-    top_3_indices = np.argsort(y_proba, axis=1)[:, -3:]
-    y_val_flat = y_val.ravel()
-    # 判断真实标签是否在 top-3 预测中
-    top_3_correct = np.sum([y_val_flat[i] in top_3_indices[i] for i in range(len(y_val_flat))])
-    # 计算 Top-3 准确率
-    top_3_accuracy = top_3_correct / len(y_val_flat)
-    print(f"\n✅ 验证集 Top-3 准确率: {top_3_accuracy:.4f}")
 
 def val():
     # 获取当前脚本所在目录
