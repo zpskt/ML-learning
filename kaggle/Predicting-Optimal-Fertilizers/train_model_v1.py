@@ -1,6 +1,7 @@
 import os
 from collections import Counter
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
@@ -10,10 +11,9 @@ from sklearn.compose import ColumnTransformer
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
+from sklearn.utils import compute_sample_weight
 from torch.utils.tensorboard import SummaryWriter
 from xgboost import XGBClassifier
-
-from data_preprocessing import generate_data_report
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -62,9 +62,11 @@ def prepare_data():
     '''
     file_path = os.path.join(data_dir, 'train.csv')
     df = pd.read_csv(file_path)
-
+    # 构建领域化特征
+    df = add_agricultural_features(df)
     # 特征和标签
     X = df.drop(columns=['Fertilizer Name', 'id'])
+
     y = df['Fertilizer Name'].values
     '''
     人工校验数据
@@ -124,8 +126,6 @@ def train_torch_model():
     print(f"🚀 开始训练，共 {epochs} 个 epoch")
     # 初始化最佳准确率
     best_acc = 0.0
-
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 'min', patience=3)
 
     for epoch in range(epochs):
         # 将模型设置为训练模式，以便启用dropout、batch normalization等在训练时需要的特性
@@ -188,7 +188,6 @@ def train_torch_model():
             with open(log_file_path, 'w') as log_file:
                 log_file.write(f"Best Accuracy: {best_acc:.4f}\n")
 
-        scheduler.step(total_loss)
         writer.add_scalar('Loss/train', total_loss, epoch)
         writer.add_scalar('Accuracy/val', acc, epoch)
 
@@ -207,82 +206,152 @@ def tradition_model():
     df = pd.read_csv(file_path)
     df = add_agricultural_features(df)
     # 特征和标签
-    X = df.drop(columns=['Fertilizer Name', 'id','Soil Type'])
+    X = df.drop(columns=['Fertilizer Name', 'id'])
     y = df['Fertilizer Name'].values
     print(df.describe())
+
+    # 自动识别数值型和类别型列
+    categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+    numerical_cols = X.select_dtypes(include=['number']).columns.tolist()
+
+    # 可选：排除某些特定列（如'id'）
+    exclude_cols = ['id']  # 如果有需要排除的列名列表
+    categorical_cols = [col for col in categorical_cols if col not in exclude_cols]
+    numerical_cols = [col for col in numerical_cols if col not in exclude_cols]
+
     # 定义预处理器：类别型列做 OneHot，数值型列标准化
-    # 明确指定类别型和数值型列  Temparature,Humidity,Moisture,Soil Type,Crop Type,Nitrogen,Potassium,Phosphorous
-    # categorical_cols = ['Soil Type', 'Crop Type']
-    categorical_cols = [ 'Crop Type','Sugarcane_Clayey']
-    # columns_to_exclude = ['Temparature', 'Humidity', 'Moisture', 'Nitrogen', 'Potassium', 'Phosphorous']
-    columns_to_exclude = []
-    # Humidity、 Nitrogen Phosphorous N——sqrt影响不大
-    # Moisture NPK 比较小
-    numerical_cols = [col for col in X.columns if col not in categorical_cols and col not in columns_to_exclude]
+
     preprocessor = ColumnTransformer([
         ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
         ('num', StandardScaler(), numerical_cols)
     ])
 
-    X_processed = preprocessor.fit_transform(X)
-
-    # generate_data_report(df, target_col='Fertilizer Name')
-
     # 编码标签（虽然你已处理过，但确保是整数形式）
     le = LabelEncoder()
     y = le.fit_transform(y)
 
+    X_processed = preprocessor.fit_transform(X)
+
+
+    # ✅ 保存已经 fit 好的 preprocessor
+    joblib.dump(preprocessor, os.path.join(current_dir, 'scaler.pkl'))
+    print("✅ ColumnTransformer 已保存为 scaler.pkl")
+
+    # 保存 LabelEncoder
+    joblib.dump(le, os.path.join(current_dir, 'label_encoder.pkl'))
+    print("✅ LabelEncoder 已保存")
+
     # 划分训练集和验证集
     X_train, X_val, y_train, y_val = train_test_split(X_processed, y, test_size=0.2, random_state=42)
 
-    # clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42) 17.3%
+
+
     # XGBoost 示例
     # 初始化XGBClassifier模型，配置特定的参数以优化模型性能
     print("XGBoost 模型训练中...")
-    clf = XGBClassifier(
-        n_estimators=500,
-        learning_rate=0.1,
-        max_depth=5,
-        min_child_weight=3,
-        gamma=0.1,
-        subsample=0.8,
-        colsample_bytree=0.7,
-        eval_metric='mlogloss',
-        use_label_encoder=False,
-        tree_method='hist'
+    # 模型保存路径
+    model_path = "xgboost_model.json"
+
+    # 判断模型文件是否存在
+    if os.path.exists(model_path):
+        print("🔄 检测到已有模型文件，正在加载...")
+        model = XGBClassifier()
+        model.load_model(model_path)
+    else:
+        print("🆕 未找到模型文件，正在创建新模型...")
+        model = XGBClassifier(
+            n_estimators=500,  # 设置树的数量，增加数量可以提高模型的鲁棒性
+            learning_rate=0.1,  # 学习率，控制每棵树对最终结果的贡献，防止过拟合
+            max_depth=6,  # 树的最大深度，增加深度可以提高模型的拟合能力，但也可能引起过拟合
+            min_child_weight=3,  # 叶子节点中最小的样本权重和，用于控制过拟合
+            gamma=0.2,  # 在节点分裂时的最小减少误差量，值越大，模型越保守
+            subsample=0.7,  # 训练每棵树时使用的数据比例，可以防止过拟合
+            colsample_bytree=0.6,  # 训练每棵树时使用的特征比例，可以提高模型的泛化能力
+            eval_metric='mlogloss',  # 评估模型的指标，这里使用多类对数损失
+            tree_method='hist'  # 使用直方图算法来加速树的构建
+        )
+
+    # # 计算每个样本的权重（根据 y_train）
+    # sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
+    #
+    # # 转换为 numpy 数组以确保兼容性
+    # sample_weights = np.array(sample_weights, dtype=np.float32)
+
+    # 使用更精细的类别权重（例如手动指定某类更高权重）
+    class_weights = {
+        0: 0.9,
+        1: 0.9,
+        2: 0.95,
+        3: 1.0,
+        4: 1.0,
+        5: 1.1,  # 对于容易被误判的类别提高权重
+        6: 1.125
+    }
+    # 根据 y_train 构建 sample_weight 数组
+    sample_weights = np.array([class_weights[y] for y in y_train], dtype=np.float32)
+
+    model.fit(
+        X_train, y_train,
+        sample_weight=sample_weights,  # 使用计算出的样本权重
+        eval_set=[(X_val, y_val)],
+        verbose=100 #每隔多少个 epoch 打印一次训练日志信息
     )
-    eval_set = [(X_val, y_val)]
-    clf.fit(X_train, y_train, early_stopping_rounds=20, eval_set=eval_set, verbose=False)
+    model.save_model('xgboost_model.json')
     print("XGBoost训练结束")
-    # # LightGBM 示例
-    # clf = LGBMClassifier(
-    #     n_estimators=1000,
-    #     learning_rate=0.05,
-    #     max_depth=6,
-    #     subsample=0.8,
-    #     colsample_bytree=0.8,
-    #     random_state=42
-    # )
-    y_pred = clf.predict(X_val)
+    y_pred = model.predict(X_val)
     print("Val Accuracy:", accuracy_score(y_val, y_pred))
     print(classification_report(y_val, y_pred))
     import seaborn as sns
 
+    # 查看混淆矩阵
     sns.heatmap(confusion_matrix(y_val, y_pred), annot=True, fmt='d', cmap='Blues')
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
+    # 保存图像到本地
+    output_path = os.path.join(current_dir, "image\\预测混淆矩阵.png")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')  # 高清保存
+    print(f"✅ 混淆矩阵图像已保存至：{output_path}")
     plt.show()
+
+    print("开始shap分析")
+    # 导入 SHAP 库，用于解释模型预测结果
+    import shap
+    # 创建 SHAP 解释器，基于训练好的 XGBoost 模型
+    explainer = shap.Explainer(model)
+
+    # 获取特征名（OneHot 处理后）
+    ohe = preprocessor.named_transformers_['cat']
+    encoded_cat_cols = ohe.get_feature_names_out(categorical_cols)
+    all_feature_names = list(encoded_cat_cols) + numerical_cols
+
+    print("特征数量:", X_val.shape[1])
+    print("特征名:", all_feature_names)
+
+    # 计算验证集上每个样本的 SHAP 值（即每个特征对预测结果的影响）
+    shap_values = explainer(X_val)
+
+    # 绘制第 5 类和第 6 类的 SHAP 特征影响图
+    # 查看哪些特征对这两个容易混淆类别的预测影响最大
+    shap.summary_plot(shap_values[5], X_val)
+    shap.summary_plot(shap_values[6], X_val)
+    print("shap分析完毕")
+
+    #提取所有被误判为 5/6 的样本进行分析：
+    mask = ((y_pred == 5) | (y_pred == 6)) & (y_val != y_pred)
+    X_errors = X_val[mask]
+    print("错误分类样本：{}",  X_errors.shape[0])
+
 
 # -----------------------------
 # 特征构造
 # -----------------------------
 def add_agricultural_features(df):
     df['Moisture_Squared'] = df['Moisture'] ** 3
-    df['Phosphorous_Squared'] =df['Phosphorous']**2
-    df['Nitrogen_Squared'] =df['Nitrogen']**2
-    df['Temparature_Squared'] =df['Temparature']**2
-    df['Humidity_Squared'] =df['Humidity']**2
+    df['Phosphorous_Squared'] = df['Phosphorous'] ** 2
+    df['Nitrogen_Squared'] = df['Nitrogen'] ** 2
+    df['Temparature_Squared'] = df['Temparature'] ** 2
+    df['Humidity_Squared'] = df['Humidity'] ** 2
     df['NPK_Sum'] = df['Nitrogen'] + df['Phosphorous'] + df['Potassium']
     df['N_P_Ratio'] = df['Nitrogen'] / (df['Phosphorous'] + 1e-5)
     df['P_K_Ratio'] = df['Phosphorous'] / (df['Potassium'] + 1e-5)
@@ -297,36 +366,8 @@ def add_agricultural_features(df):
     df['Crop_Soil_Preference'] = df.apply(
         lambda row: crop_soil_preference.get((row['Crop Type'], row['Soil Type']), 1.0), axis=1)
     df['Weighted_Nitrogen'] = df['Nitrogen'] * df['Crop_Soil_Preference']
-    """
-    构造农业领域相关特征
-    """
-    # df['NPK_Sum'] = df['Nitrogen'] + df['Phosphorous'] + df['Potassium']
-    # df['N_P_Ratio'] = df['Nitrogen'] / (df['Phosphorous'] + 1e-5)
-    # df['P_K_Ratio'] = df['Phosphorous'] / (df['Potassium'] + 1e-5)
-    # df['Env_Index'] = df['Temparature'] * df['Humidity'] * df['Moisture'] * 20
-    # df['Fertility_Score'] = (
-    #         df['Nitrogen'] * 0.3 +
-    #         df['Phosphorous'] * 0.3 +
-    #         df['Potassium'] * 0.4
-    # )
-    # TODO 用模型辅助自己学习权重
-    # crop_n_preference = {
-    #     'Wheat': 0.8,
-    #     'Maize': 0.7,
-    #     'Oil seeds': 0.3,
-    #     'Paddy': 0.5,
-    #     'Cotton': 0.6,
-    #     'Barley': 0.7,
-    #     'Millets': 0.5,
-    #     'Sugarcane': 0.4,
-    #     'Ground Nuts': 0.4,
-    #     'Tobacco': 0.5,
-    #     'Pulses': 0.4
-    # }
-    # df['Crop_Nitrogen_Preference'] = df['Crop Type'].map(crop_n_preference).fillna(0.5)
-    # df['Weighted_N'] = df['Nitrogen'] * df['Crop_Nitrogen_Preference']
-    # df['N_sqrt'] = np.sqrt(df['Nitrogen'])
-    # df['NK_ratio'] = df['Nitrogen'] / (df['Potassium'] + 1e-5)
+    df['Nitrogen_Potassium_Ratio'] = df['Nitrogen'] / (df['Potassium'] + 1e-5)
+    df['Phosphorous_Temp_Index'] = df['Phosphorous'] * df['Temparature']
     return df
 
 

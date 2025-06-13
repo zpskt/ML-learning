@@ -1,17 +1,20 @@
 # 数据集分析
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from collections import Counter
+import os
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 import shap
 from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
+from xgboost import XGBClassifier
 
 # 加载训练数据集
 # df_train = pd.read_csv('data/train.csv')
 df_train = pd.read_csv('data/processed_train.csv')
+
 
 def basic_info():
     '''
@@ -34,6 +37,7 @@ def basic_info():
 
     # 恢复列显示限制（可选）
     pd.reset_option('display.max_columns')
+
 
 def plot_numeric_histograms():
     try:
@@ -88,7 +92,7 @@ def plot_categorical_histograms():
             sns.countplot(data=df_train, x=col, ax=axes[row, col_idx])
             axes[row, col_idx].set_title(f'Count Plot of {col}')
             axes[row, col_idx].tick_params(axis='x', rotation=45)  # 防止标签重叠
-            print("{col}",col)
+            print("{col}", col)
         except Exception as e:
             print(f"绘制列 {col} 出错: {e}")
 
@@ -143,6 +147,7 @@ def feature_distribution_by_target():
         plt.close()
     # 查看object类型的数据
 
+
 def categorical_distribution_by_target():
     '''
     查看数据类型的数据分布
@@ -173,7 +178,6 @@ def categorical_distribution_by_target():
         plt.close()
 
 
-
 def target_column_analysis():
     # 查看肥料种类及其数量
     print(df_train['Fertilizer Name'].value_counts())
@@ -183,6 +187,7 @@ def target_column_analysis():
     plt.title('Distribution of Fertilizer Names')
     plt.tight_layout()
     plt.show()
+
 
 def plot_feature_vs_target(df, target_col):
     """
@@ -216,6 +221,8 @@ def plot_feature_vs_target(df, target_col):
             plt.xticks(rotation=45)
             plt.tight_layout()
             plt.show()
+
+
 def generate_data_report(df, target_col='Fertilizer Name'):
     """
     生成完整的数据探索报告：
@@ -304,9 +311,82 @@ def generate_data_report(df, target_col='Fertilizer Name'):
 
     print("✅ 数据探索报告已完成。")
 
+
+def check_shap_by_model(model, X_train):
+    # 数据预处理
+    numeric_features = X_train.select_dtypes(include=['number']).columns.tolist()
+    categorical_features = X_train.select_dtypes(include=['object']).columns.tolist()
+
+    preprocessor = ColumnTransformer([
+        ('num', StandardScaler(), numeric_features),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+    ])
+
+    X_train_processed = preprocessor.fit_transform(X_train)
+    # 3. 特征重要性可视化（SHAP）
+    print("🔍 生成特征重要性图表...")
+    explainer = shap.TreeExplainer(model)
+    try:
+        shap_values = explainer.shap_values(X_train_processed)
+
+        # 如果是多分类任务，取第一个类别的 SHAP 值
+        if isinstance(shap_values, list):
+            shap_values = shap_values[0]
+
+        # 确保 X_train 是稠密数组
+        if hasattr(X_train_processed, "toarray"):
+            X_train_dense = X_train_processed.toarray()
+        else:
+            X_train_dense = X_train_processed
+
+        # 获取正确的特征名称
+        def get_transformed_column_names(preprocessor, numeric_features, categorical_features):
+            transformers = []
+            for name, trans, cols in preprocessor.transformers_:
+                if trans == 'drop':
+                    continue
+                if name == 'cat':
+                    new_cols = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+                    transformers.extend(new_cols)
+                else:
+                    transformers.extend(cols)
+            return transformers
+
+        feature_names = get_transformed_column_names(preprocessor, numeric_features, categorical_features)
+
+        # 绘制 summary plot
+        shap.summary_plot(shap_values, X_train_dense, feature_names=feature_names, plot_type="bar")
+
+    except Exception as e:
+        print(f"⚠️ SHAP 图无法生成：{e}")
+
+    print("✅ 数据探索报告已完成。")
+
+
 if __name__ == '__main__':
-    # basic_info()
-    # plot_numeric_histograms()
-    # plot_categorical_histograms()
-    feature_distribution_by_target()
-    # categorical_distribution_by_target()
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(current_dir, 'data')
+
+    print("开始加载数据并处理")
+
+    # -----------------------------
+    # 1. 加载数据
+    # -----------------------------
+    file_path = os.path.join(data_dir, 'train.csv')
+    df = pd.read_csv(file_path)
+    y = df['Fertilizer Name'].values
+    # 编码标签（虽然你已处理过，但确保是整数形式）
+    le = LabelEncoder()
+    y = le.fit_transform(y)
+
+    target_col = 'Fertilizer Name'
+    X_train, X_val, y_train, y_val = train_test_split(
+        df.drop(columns=[target_col,'id']),
+        y,
+        test_size=0.2,
+        random_state=42
+    )
+    # 加载模型json文件
+    model = XGBClassifier()
+    model.load_model("xgboost_model.json")
+    check_shap_by_model(model, X_train)
