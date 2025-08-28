@@ -10,15 +10,20 @@
 ```
 food_recognition/
 ├── data/
-│   └── train/
-│       └── food/
+│   ├── train/
+│   │   ├── images/
+│   │   └── labels/
+│   ├── val/
+│   │   ├── images/
+│   │   └── labels/
+│   └── food_dataset.yaml      # 数据集配置文件
 ├── src/
-│   ├── api/           # API服务模块
-│   ├── train/         # 初始训练模块
-│   ├── retrain/       # 重训练模块
-│   └── data_processing/  # 数据处理模块
-├── models/            # 模型保存目录
-├── requirements.txt   # 项目依赖
+│   ├── api/                   # API服务模块
+│   ├── train/                 # 初始训练模块
+│   ├── retrain/               # 重训练模块
+│   └── data_processing/       # 数据处理模块
+├── models/                    # 模型保存目录
+├── requirements.txt           # 项目依赖
 └── README.md
 ```
 
@@ -47,13 +52,31 @@ cd src/data_processing
 python prepare_data.py
 ```
 
+数据准备格式：
+将食材图片按照以下结构存放：
+
+```
+data/food/
+├── ingredient1/
+│   ├── img1.jpg
+│   ├── img2.jpg
+│   └── ...
+├── ingredient2/
+│   ├── img1.jpg
+│   ├── img2.jpg
+│   └── ...
+└── ...
+```
+
+每个子文件夹代表一种食材，文件夹名为食材名称。
+
 ### 2. 初始训练模块
 
 用于从头开始训练食材识别模型。
 
 ```bash
 cd src/train
-python train_model.py --data_dir ../../data/yolo_dataset --epochs 100 --save_dir ../../models
+python train_model.py --data_config ../../data/food_dataset.yaml --epochs 100 --save_dir ../../models
 ```
 
 ### 3. 重训练模块
@@ -62,7 +85,7 @@ python train_model.py --data_dir ../../data/yolo_dataset --epochs 100 --save_dir
 
 ```bash
 cd src/retrain
-python retrain_model.py --model_path ../../models/food_model/weights/best.pt --data_dir ../../data/yolo_dataset --epochs 50 --save_dir ../../models
+python retrain_model.py --model_path ../../models/food_model/weights/best.pt --data_config ../../data/food_dataset.yaml --epochs 50 --save_dir ../../models
 ```
 
 ### 4. API服务模块
@@ -76,12 +99,20 @@ python app.py
 
 启动后访问 `http://localhost:5000` 查看API信息。
 
+实时摄像头检测：
+```bash
+cd src/api
+python camera_detector.py --model_path ../../models/food_model/weights/best.pt
+```
+
+按 'q' 键退出摄像头检测。
+
 ## 数据准备
 
 将食材图片按照以下结构存放：
 
 ```
-data/train/food/
+data/food/
 ├── ingredient1/
 │   ├── img1.jpg
 │   ├── img2.jpg
@@ -120,3 +151,87 @@ data/train/food/
 - `1.0 1.0`：边界框宽度和高度都占满整个图像（100%）
 
 这种设计适用于图像分类任务，假设整个图像都是该类别的食材，在YOLO模型训练中是合理的。
+
+## Flask API接口文档
+
+### 1. 首页
+
+**URL**: `GET /`
+
+**描述**: 返回API服务信息和可用接口列表
+
+**响应示例**:
+```json
+{
+  "message": "食材识别API服务",
+  "endpoints": {
+    "/load_model": "加载模型",
+    "/detect": "检测视频中的食材",
+    "/detect_image": "检测图片中的食材"
+  }
+}
+```
+
+### 2. 加载模型接口
+
+**URL**: `POST /load_model`
+
+**描述**: 加载指定路径的模型文件
+
+**请求参数**:
+```json
+{
+  "model_path": "模型文件路径，如: ../../models/food_model/weights/best.pt"
+}
+```
+
+**响应示例**:
+```json
+{
+  "message": "模型加载成功"
+}
+```
+
+### 3. 图片食材检测接口
+
+**URL**: `POST /detect_image`
+
+**描述**: 检测图片中的食材
+
+**请求参数**:
+```json
+{
+  "image_path": "图片文件路径",
+  "conf_threshold": 0.5  // 可选，置信度阈值，默认为0.5
+}
+```
+
+**响应示例**:
+```json
+{
+  "message": "检测完成",
+  "ingredients": ["土豆", "胡萝卜"]
+}
+```
+
+### 4. 视频食材检测接口
+
+**URL**: `POST /detect`
+
+**描述**: 检测视频中的食材
+
+**请求参数**:
+```json
+{
+  "video_path": "视频文件路径",
+  "conf_threshold": 0.5  // 可选，置信度阈值，默认为0.5
+}
+```
+
+**响应示例**:
+```json
+{
+  "message": "检测完成",
+  "ingredients": ["土豆", "胡萝卜", "青椒"]
+}
+```
