@@ -1,0 +1,7 @@
+path: /Users/zhangpeng/Desktop/zpskt/ML-learning/food_recognition/data
+train: train
+val: val
+
+names:
+  0: tudou
+  1: ximei
