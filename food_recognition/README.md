@@ -5,6 +5,12 @@
 作者: zhangpeng
 时间: 2025-08-28
 
+# 文档
+
+- [用户手册](./docs/user_manual.md) - 详细使用说明
+- [开发指南](./docs/development_guide.md) - 开发和扩展指南
+- [未来更新规划](./docs/future_updates.md) - 项目未来发展计划
+
 ## 目录结构
 
 ```
@@ -184,11 +190,6 @@ python run_example.py
 ### 9. 测试模块
 
 包含单元测试代码。
-
-## 文档
-
-- [用户手册](./docs/user_manual.md) - 详细使用说明
-- [开发指南](./docs/development_guide.md) - 开发和扩展指南
 
 ## 数据准备
 
