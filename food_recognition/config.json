@@ -1,0 +1,31 @@
+{
+  "event_handlers": {
+    "log": true,
+    "tts": false,
+    "api": false,
+    "kafka": false
+  },
+  "tts": {
+    "enabled": false,
+    "rate": 200,
+    "voice": "default"
+  },
+  "api": {
+    "enabled": false,
+    "endpoint": ""
+  },
+  "kafka": {
+    "enabled": false,
+    "bootstrap_servers": [
+      "localhost:9092"
+    ],
+    "topic": "food-detection-events"
+  },
+  "logging": {
+    "enabled": true,
+    "file": "logs/food_detection.log",
+    "level": "INFO",
+    "max_bytes": 10485760,
+    "backup_count": 5
+  }
+}

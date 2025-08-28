@@ -12,3 +12,10 @@ opencv-python==4.10.0.84
 numpy==1.26.4
 flask==3.1.0
 ultralytics==8.3.107
+# 事件处理相关依赖（可选）
+pyttsx3==2.90  # 用于语音播报
+requests==2.31.0  # 用于外部API调用
+kafka-python==2.0.2  # 用于Kafka消息推送
+# 测试依赖
+coverage==7.2.7
+pytest==7.4.0

@@ -21,8 +21,16 @@ food_recognition/
 │   ├── api/                   # API服务模块
 │   ├── train/                 # 初始训练模块
 │   ├── retrain/               # 重训练模块
-│   └── data_processing/       # 数据处理模块
+│   ├── data_processing/       # 数据处理模块
+│   ├── events/                # 事件处理模块
+│   ├── config/                # 配置管理模块
+│   ├── exceptions/            # 异常处理模块
+│   ├── utils/                 # 工具模块
+│   └── tests/                 # 测试模块
 ├── models/                    # 模型保存目录
+├── docs/                      # 文档目录
+├── logs/                      # 日志目录
+├── config.json                # 全局配置文件
 ├── requirements.txt           # 项目依赖
 └── README.md
 ```
@@ -106,6 +114,81 @@ python camera_detector.py --model_path ../../models/food_model/weights/best.pt
 ```
 
 按 'q' 键退出摄像头检测。
+
+### 5. 事件处理模块
+
+当识别到食材时触发事件，支持多种处理方式：
+- 日志记录
+- 语音播报
+- 外部接口调用
+- Kafka消息推送
+
+该模块采用解耦设计，可以轻松扩展新的事件处理方式。
+
+事件处理由配置文件控制，默认只启用了日志记录事件监听器。
+
+### 6. 配置管理模块
+
+项目使用统一的配置管理机制，所有模块通过读取配置决定自己的行为。
+
+配置文件位于项目根目录的 [config.json](file:///Users/zhangpeng/Desktop/zpskt/ML-learning/food_recognition/config.json) 文件中，可以控制以下功能：
+
+```json
+{
+  "event_handlers": {
+    "log": true,     // 启用日志记录
+    "tts": false,    // 启用语音播报
+    "api": false,    // 启用外部API调用
+    "kafka": false   // 启用Kafka推送
+  },
+  "tts": {
+    "enabled": false,
+    "rate": 200,
+    "voice": "default"
+  },
+  "api": {
+    "enabled": false,
+    "endpoint": ""
+  },
+  "kafka": {
+    "enabled": false,
+    "bootstrap_servers": ["localhost:9092"],
+    "topic": "food-detection-events"
+  },
+  "logging": {
+    "enabled": true,              // 启用日志记录到文件
+    "file": "logs/food_detection.log",  // 日志文件路径
+    "level": "INFO",              // 日志级别
+    "max_bytes": 10485760,        // 单个日志文件最大字节数 (10MB)
+    "backup_count": 5             // 保留的备份日志文件数量
+  }
+}
+```
+
+要启用特定功能，只需修改配置文件中对应项为 `true` 并填写相关配置即可。
+
+运行示例脚本查看效果：
+```bash
+cd src/events
+python run_example.py
+```
+
+### 7. 异常处理模块
+
+项目定义了统一的异常类型，所有自定义异常都继承自 `FoodRecognitionException` 基类。
+
+### 8. 工具模块
+
+包含日志配置等通用工具函数。
+
+### 9. 测试模块
+
+包含单元测试代码。
+
+## 文档
+
+- [用户手册](./docs/user_manual.md) - 详细使用说明
+- [开发指南](./docs/development_guide.md) - 开发和扩展指南
 
 ## 数据准备
 
