@@ -1,0 +1,429 @@
+# LangChain详解 
+
+## 简介
+官网地址：[https://docs.langchain.com/#python] 
+LangChain是代理工程平台。我理解就相当于Java中的Spring框架。Spring的企业级应用开发框架，LangChain是围绕AI概念的框架。
+LangGraph和LangChain的关系：
+LangGraph是LangChain生态系统中的底层编排框架
+langchain是更高层的应用开发平台，内置了对langGraph的集成。
+二者的关系类似于Springboot和Spring的关系。
+
+可能在之前的印象中是一个智能体工具框架，但更准确的来说是一个代理工程平台。
+1. 它提供了AI代理的完整工具链
+2. 提供代理的全生命周期管理
+3. 集成多种AI模型，数据源和执行环境
+**核心功能**
+1. 代理构建 
+   提供Agent抽象和各种代理模板 
+   支持自定义代理逻辑和行为
+2. 工具集成
+    内置大量预定义工具
+    支持自定义Tool扩展
+3. 记忆管理
+    提供Memory组件管理代理状态（还有很多其他框架都支持，例如LLamaIndex、AutoGen等）
+    支持规划历史和上下文维护
+4. 执行编排
+    Chains和Agents的执行流程控制
+    复杂任务的分解和协调
+
+## 框架使用
+目前官网中提供两种开源的框架代码：Python，TypeScript
+这里展示使用python示例。
+要使用它，必须导入必要的组件和工具。就像我们使用Spring的时候，pom中要添加数据库，redis，mybatis，mongondb等依赖，
+LangChain中要添加类似的组件和工具，例如：LLMs,chat models,agents,chains,内存等。
+### 核心组件1：LLMs和Chat Models
+在langchain中模型接口主要分类两种：LLMs（纯文本）和Chat Models（结构化消息）。他们代表两种和nlp模型交互的方式。
+LLMs：用于处理纯文本输入并返回纯本文输出的模型。
+```python
+from langchain_openai import OpenAI
+
+# 初始化一个基本的LLM
+llm = OpenAI(temperature=0)
+
+# 使用LLM进行预测
+result = llm.invoke("解释量子计算的基本原理")
+print(result)
+```
+Chat Models：用于处理非纯文本输入并返回非纯文本输出的模型。它的输入输出是格式化的聊天消息，而不是纯文本，这种其实更适合构建对话应用
+```python
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
+
+# 初始化聊天模型
+chat = ChatOpenAI(temperature=0)
+
+# 创建消息列表
+messages = [
+    SystemMessage(content="你是一个有帮助的AI助手"),
+    HumanMessage(content="写一个简短的诗歌，主题是春天")
+]
+
+# 获取回复
+response = chat.invoke(messages)
+print(response)
+```
+### 核心组件2：Messages
+聊天模型的基本输入和输出单位是消息，它们可以包含文本、图片、音频、视频、文件、嵌入、代码块等，langchain提供了几种不同类型的消息。
+1. AiMessage: 表示AI的回复
+2. HumanMessage: 表示用户输入
+3. SystemMessage: 描述代理的元数据，例如角色、任务、环境等,通常用于设定AI的行为规则或北京信息
+4. ChatMessage: 可以自定义角色的通用消息类型
+5. FunctionMessage/ToolMessage: 表示函数调用或工具调用的回复
+```python
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ChatMessage,
+    ToolMessage
+)
+
+# 创建不同类型的消息
+system_message = SystemMessage(content="你是一个专业的数据科学家")
+human_message = HumanMessage(content="解释一下随机森林算法")
+ai_message = AIMessage(content="随机森林是一种集成学习方法...")
+custom_message = ChatMessage(role="analyst", content="补充一点关于超参数调优的信息")
+
+# 在对话中使用这些消息
+chat = ChatOpenAI()
+response = chat.invoke([system_message, human_message])
+print(response)
+```
+
+### 核心组件3：Prompts
+提示（prompt）是代理与用户交互的方式，它定义了代理如何与用户进行对话。langchain提供了许多工具来管理和优化提示
+1. PromptTemplate: 提示模板，用于生成提示。它可以创建可重用的文本模板，其中包含可动态插入的变量
+```python
+from langchain_core.prompts import PromptTemplate
+
+# 定义一个简单的提示模板
+template = PromptTemplate(
+    input_variables=["product", "review"],
+    template="产品：{product}\n评论：{review}\n这个评论的情感是什么？"
+)
+
+# 使用模板生成具体的提示
+prompt = template.format(
+    product="无线耳机",
+    review="音质非常好，但电池续航一般"
+)
+print(prompt)
+
+# 与LLM结合使用
+llm = OpenAI(temperature=0)
+result = llm.invoke(prompt)
+print(result)
+```
+2. ChatPromptTemplate: 聊天提示模板，用于生成聊天提示。它可以创建可重用的聊天模板，其中包含可动态插入的变量
+```python
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+
+# 创建消息模板
+system_template = "你是一个专家{role}"
+system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
+
+human_template = "给我解释{concept}，用浅显易懂的语言"
+human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
+
+# 组合成聊天提示模板
+chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+
+# 格式化提示
+formatted_messages = chat_prompt.format_messages(
+    role="物理学家",
+    concept="相对论"
+)
+
+# 使用聊天模型
+chat = ChatOpenAI()
+response = chat.invoke(formatted_messages)
+print(response)
+
+
+
+from openai import OpenAI
+from langchain import PromptTemplate
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage
+import os
+
+load_dotenv('.env')
+# 设置 API Key 和模型参数
+llm = ChatOpenAI(
+    api_key=os.getenv("apikey"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model="qwen-plus"  # 替换为需要的模型名称
+)
+
+chat_template = ChatPromptTemplate.from_messages([
+    ("system", "你是专业blog作者"),  # 这里可以直接用 ("role", content) 形式
+    ("human", "{input}"),  # HumanMessage.from_template() 也可以替换为 ("human", "{input}")
+])
+
+# 生成填充后的消息
+messages = chat_template.format_messages(input="写一篇关于大模型分词原理的文章")
+print(messages)
+```
+### 核心组件4：Output parsers
+输出解释器是一个将模型输出转换为所需的格式的组件，让它更适合在app中使用
+1. StructuredOutputParser: 结构化输出解释器，用于将模型输出转换为结构化数据
+```python
+from langchain_core.output_parsers import StructuredOutputParser, ResponseSchema
+
+# 定义响应模式
+response_schemas = [
+    ResponseSchema(name="answer", description="问题的答案"),
+    ResponseSchema(name="source", description="信息的来源")
+]
+
+# 创建解析器
+output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+
+# 获取格式说明
+format_instructions = output_parser.get_format_instructions()
+
+# 创建包含格式说明的提示
+prompt = PromptTemplate(
+    template="请尽可能回答用户的问题。\n{format_instructions}\n问题：{question}",
+    input_variables=["question"],
+    partial_variables={"format_instructions": format_instructions}
+)
+
+# 生成提示并获取响应
+formatted_prompt = prompt.format(question="巴黎的首都是什么？")
+model = OpenAI(temperature=0)
+response = model.invoke(formatted_prompt)
+
+# 解析响应
+parsed_response = output_parser.parse(response)
+print(parsed_response)
+
+```
+2. PydanticOutputParser: 使用pydantic库的模型来解释模型输出，提供强大的数据验证功能。
+```python
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+
+# 定义输出数据结构
+class Joke(BaseModel):
+    setup: str = Field(description="笑话的铺垫")
+    punchline: str = Field(description="笑话的包袱")
+
+# 创建解析器
+parser = PydanticOutputParser(pydantic_object=Joke)
+
+# 创建提示
+prompt = PromptTemplate(
+    template="请讲一个笑话。\n{format_instructions}",
+    input_variables=[],
+    partial_variables={"format_instructions": parser.get_format_instructions()}
+)
+
+# 获取响应
+formatted_prompt = prompt.format()
+model = OpenAI(temperature=0.7)
+response = model.invoke(formatted_prompt)
+
+# 解析输出
+joke = parser.parse(response)
+print(f"铺垫: {joke.setup}")
+print(f"包袱: {joke.punchline}")
+```
+### 核心组件5：索引 / 检索 Vector Stores与Retrievers
+此组件是用于存储和检索非结构化数据，如文本、图片、音频、视频等，可以使得LLM能够访问外部知识
+1. VectorStore: 向量存储，用于存储非结构化数据，如文本、图片、音频、视频等，并支持向量检索，语义搜索。
+```python
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+
+# 创建文档
+documents = [
+    Document(
+        page_content="机器学习是人工智能的一个子领域",
+        metadata={"source": "ai-textbook", "page": 15}
+    ),
+    Document(
+        page_content="深度学习是基于神经网络的机器学习方法",
+        metadata={"source": "ai-textbook", "page": 42}
+    ),
+    Document(
+        page_content="Python是最流行的编程语言之一",
+        metadata={"source": "programming-guide", "page": 7}
+    )
+]
+
+# 创建向量存储
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(documents, embeddings)
+
+# 使用相似度搜索
+results = vectorstore.similarity_search("什么是机器学习？", k=2)
+for doc in results:
+    print(doc.page_content)
+    print(doc.metadata)
+    print("---")
+```
+2. Retriever: 检索器，用于从向量存储中检索数据，并返回结果。它是向量存储的轻量级包装器，可以提供标准化接口用于检索文档。
+
+```python
+# 从向量存储创建检索器
+retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+
+# 检索相关文档
+retrieved_docs = retriever.invoke("人工智能的应用")
+for doc in retrieved_docs:
+    print(doc.page_content)
+    print("---")
+
+# 使用最大边际相关性(MMR)搜索
+mmr_retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 2})
+mmr_docs = mmr_retriever.invoke("编程语言")
+for doc in mmr_docs:
+    print(doc.page_content)
+    print("---")
+
+```
+
+### 核心组件6：Agents
+代理是LangChain中的高级组件，它可以根据输入的指令和上下文，生成一个有效的指令，并执行它。
+```python
+from langchain.agents import Tool, initialize_zero_shot_agent
+from langchain.memory import ConversationBufferMemory
+from langchain_openai import OpenAI
+
+# 定义工具
+class WeatherTool:
+    def run(self, query):
+        # 在实际应用中，这里会调用天气API
+        return "今天天气晴朗，温度25°C"
+
+class CalculatorTool:
+    def run(self, query):
+        # 在实际应用中，这里会解析查询并执行计算
+        try:
+            return str(eval(query))
+        except:
+            return "无法计算该表达式"
+
+# 创建工具列表
+tools = [
+    Tool(
+        name="Weather",
+        func=WeatherTool().run,
+        description="当你需要查询天气信息时使用"
+    ),
+    Tool(
+        name="Calculator",
+        func=CalculatorTool().run,
+        description="当你需要进行数学计算时使用"
+    )
+]
+
+# 初始化LLM
+llm = OpenAI(temperature=0)
+
+# 创建记忆组件
+memory = ConversationBufferMemory(memory_key="chat_history")
+
+# 创建Agent
+agent = initialize_zero_shot_agent(
+    tools,
+    llm,
+    memory=memory,
+    verbose=True  # 显示Agent的思考过程
+)
+
+# 使用Agent
+response = agent.run("今天天气怎么样？")
+print(response)
+
+response = agent.run("计算23乘以45")
+print(response)
+```
+
+### 核心组件7：LangChain Expressions Language(LCEL) 与 Chains
+Chains是langchain中的基本构建块，允许将多个组件合成一个工作流，LCEL提供声明式语法创建工作流。
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+
+# 创建简单的翻译应用
+# 1. 定义提示模板
+prompt = ChatPromptTemplate.from_template(
+    "将以下{input_language}文本翻译成{output_language}:\n\n{text}"
+)
+
+# 2. 初始化模型
+model = ChatOpenAI(temperature=0)
+
+# 3. 定义输出解析器
+output_parser = StrOutputParser()
+
+# 4. 使用LCEL创建链
+chain = (
+    {"input_language": RunnablePassthrough(), 
+     "output_language": RunnablePassthrough(), 
+     "text": RunnablePassthrough()}
+    | prompt 
+    | model 
+    | output_parser
+)
+
+# 5. 运行链
+result = chain.invoke({
+    "input_language": "中文",
+    "output_language": "英语",
+    "text": "人工智能正在改变世界"
+})
+
+print(result)
+```
+
+### 核心组件8：Memory
+LangChain中的Memory组件用于保存和恢复会话信息，如聊天记录、历史输入输出等。
+```python
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+
+history_store = {}
+
+def get_history(session_id: str):
+    return history_store.setdefault(session_id, InMemoryChatMessageHistory())
+
+conversational_chain = RunnableWithMessageHistory(
+    chain,
+    get_history,
+    input_messages_key="question",
+    history_messages_key="history",
+)
+
+print(conversational_chain.invoke(
+    {"question": "记住我喜欢Python。"},
+    config={"configurable": {"session_id": "u1"}}
+))
+print(conversational_chain.invoke(
+    {"question": "我刚才说我喜欢哪种语言？"},
+    config={"configurable": {"session_id": "u1"}}
+))
+```
+
+
+
+
+
+```shell
+pip install -U langchain -i https://mirrors.aliyun.com/pypi/simple/
+# Requires Python 3.10+
+```
+### 创建一个代理
+安装
+```shell
+pip install -qU  langchain-anthropic -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+
