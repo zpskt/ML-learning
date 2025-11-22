@@ -155,7 +155,7 @@ class MultiDatabaseQueryWithDeepSeek:
 
         # 构造完整的提示词，告诉模型数据库结构和要求
         prompt = f"""
-        你是一个SQL专家。请根据以下数据库结构和用户问题，生成准确的SQL查询语句。
+        你是一个数据库专家，能够根据数据库结构和用户问题，生成准确的SQL查询语句.
 
         当前查询的数据库: {db_name}
         数据库结构：
@@ -163,13 +163,10 @@ class MultiDatabaseQueryWithDeepSeek:
 
         用户问题：{user_question}
 
-        要求：
-        1. 只返回SQL查询语句，不要有其他解释
-        2. 确保SQL语法正确
-        3. 使用合适的查询条件
-        4. 如果用户问题不明确，请基于数据库结构做出合理假设
-
-        SQL查询：
+        请按照以下格式回答：
+        ```sql
+        [在这里写入SQL查询语句]
+        ```
         """
         return prompt
 
@@ -198,19 +195,34 @@ class MultiDatabaseQueryWithDeepSeek:
             prompt = self.generate_sql_prompt(user_question, db_name)
             print("生成的提示词:", prompt[:500] + "..." if len(prompt) > 500 else prompt)  # 限制打印长度
 
-            # 2. 调用模型生成SQL
-            sql_query = self.llm.invoke(prompt)
-            print(f"模型返回的原始结果: {sql_query}")
+            # 2. 调用模型生成SQL和自然语言回答
+            llm_response = self.llm.invoke(prompt)
+            print(f"模型返回的原始结果: {llm_response}")
 
-            # 3. 清理SQL结果（去除可能的额外文本）
-            sql_query = self.clean_sql_query(sql_query)
-            print(f"清理后的SQL: {sql_query}")
+            # 3. 提取纯净的sql查询
+            sql_query = self.clean_sql_query(llm_response)
+            print(f"解析后的SQL: {sql_query}")
 
             # 4. 执行查询
             result = self.databases[self.current_db].run(sql_query)
 
-            # 5. 生成自然语言回复
-            response = self.generate_response(user_question, sql_query, result, self.current_db)
+            # 5. 解析SQL语句，提取表名
+            table_names = self._extract_table_names(sql_query)
+            # 6. 生成自然语言回答
+            natural_response = self._generate_natural_response(user_question,result,table_names )
+            # 6. 返回结果
+            response = {
+                "success": True,
+                "data": {
+                    "database": self.current_db,
+                    "table_names": table_names,
+                    "question": user_question,
+                    "sql": sql_query,
+                    "result": result,
+                    "natural_response": natural_response
+                },
+                "error": None
+            }
             return response
 
         except Exception as e:
@@ -244,6 +256,65 @@ class MultiDatabaseQueryWithDeepSeek:
         # 如果没有任何代码块标记，直接返回去除首尾空格的文本
         return cleaned_sql
 
+
+    def _extract_table_names(self, sql_query):
+        """
+        从SQL查询中提取表名
+
+        Args:
+            sql_query (str): SQL查询语句
+
+        Returns:
+            list: 表名列表
+        """
+        import re
+        # 匹配 FROM 和 JOIN 后面的表名
+        table_pattern = re.compile(r'\b(?:FROM|JOIN)\s+([\w"][\w\d$_]*[\w"]*(?:\.[\w"][\w\d$_]*[\w"]*)?)', re.IGNORECASE)
+        matches = table_pattern.findall(sql_query)
+        
+        # 清理表名（去除可能的引号）
+        table_names = []
+        for table in matches:
+            # 去除可能存在的双引号
+            clean_table = table.replace('"', '')
+            # 如果有别名（如 table AS alias），只保留表名
+            if ' ' in clean_table:
+                clean_table = clean_table.split()[0]
+            table_names.append(clean_table)
+        
+        # 去重并保持顺序
+        unique_tables = []
+        for table in table_names:
+            if table not in unique_tables:
+                unique_tables.append(table)
+        
+        return unique_tables
+
+    def parse_llm_response(self, llm_response):
+        """
+        解析模型的响应，提取SQL查询和自然语言回答
+
+        Args:
+            llm_response (str): 模型的完整响应
+
+        Returns:
+            tuple: (sql_query, natural_response) SQL查询和自然语言回答
+        """
+        import re
+        
+        # 提取SQL代码块
+        sql_match = re.search(r"```sql\s*([\s\S]*?)\s*```", llm_response, re.IGNORECASE)
+        sql_query = sql_match.group(1).strip() if sql_match else ""
+        
+        # 提取自然语言回答
+        natural_match = re.search(r"自然语言回答[：:]\s*([\s\S]*)", llm_response, re.IGNORECASE)
+        natural_response = natural_match.group(1).strip() if natural_match else ""
+        
+        # 清理SQL查询
+        sql_query = re.sub(r'\s+', ' ', sql_query).strip()
+        
+        return sql_query, natural_response
+
     def generate_response(self, question, sql, result, db_name):
         """
         生成友好的自然语言回复
@@ -257,16 +328,90 @@ class MultiDatabaseQueryWithDeepSeek:
         Returns:
             dict: 结构化的响应数据
         """
+        # 解析SQL语句，提取表名
+        table_names = self._extract_table_names(sql)
+
+        # 生成自然语言回答
+        natural_language_response = self._generate_natural_response(question, result, table_names)
+
         return {
             "success": True,
             "data": {
                 "database": db_name,
+                "table_names": table_names,
                 "question": question,
                 "sql": sql,
-                "result": result
+                "result": result,
+                "natural_response": natural_language_response
             },
             "error": None
         }
+
+    def _generate_natural_response(self, question, result, table_names):
+        """
+        生成自然语言回答
+
+        Args:
+            question (str): 用户问题
+            result (str): 查询结果
+            table_names (list): 表名列表
+
+        Returns:
+            str: 自然语言回答
+        """
+        # 解析查询结果
+        try:
+            # 尝试将字符串形式的结果转换为Python对象
+            import ast
+            parsed_result = ast.literal_eval(result)
+            
+            # 如果结果是非空列表
+            if isinstance(parsed_result, list) and len(parsed_result) > 0:
+                # 如果是包含元组的列表（常见于数据库查询结果）
+                if isinstance(parsed_result[0], tuple):
+                    # 提取第一个元组的第一个元素作为计数结果
+                    count = parsed_result[0][0] if len(parsed_result[0]) > 0 else 0
+                # 如果是简单列表
+                elif isinstance(parsed_result[0], (int, float)):
+                    count = parsed_result[0]
+                else:
+                    count = len(parsed_result)
+            else:
+                count = 0
+                
+        except (ValueError, SyntaxError):
+            # 如果解析失败，使用默认方式处理
+            count = "unknown"
+
+        # 构造提示词让模型生成自然语言回答
+        prompt = f"""
+        你是一个数据库查询助手。用户询问了一个问题，系统已经从数据库中查询到了结果。
+        请根据以下信息生成一个自然、易懂的回答：
+
+        用户问题：{question}
+        查询涉及的表：{', '.join(table_names) if table_names else '未知表'}
+        查询结果：{result}
+        解析后的数值结果：{count}
+
+        要求：
+        1. 回答应该简洁明了，使用自然语言
+        2. 不要暴露技术细节如表名、字段名等
+        3. 直接回答用户问题，不需要额外解释
+        4. 如果结果为空或无意义，请给出合适的说明
+        5. 在回答中应准确反映解析后的数值结果
+        6. 告诉用户，主要是从什么表中获取的结果
+        
+        自然语言回答：
+        """
+
+        # 调用模型生成自然语言回答
+        natural_response = self.llm.invoke(prompt)
+        
+        # 清理模型生成的文本
+        if natural_response.startswith("自然语言回答："):
+            natural_response = natural_response[len("自然语言回答："):].strip()
+        
+        return natural_response
 
 def main():
     """
