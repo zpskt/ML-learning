@@ -1,4 +1,4 @@
-from langchain_community.utilities import SQLDatabase
+from langchain_community.utilities.sql_database import SQLDatabase
 from openai import OpenAI
 
 
@@ -230,14 +230,19 @@ class MultiDatabaseQueryWithDeepSeek:
         if "```sql" in sql_text:
             start = sql_text.find("```sql") + 6
             end = sql_text.find("```", start)
-            return sql_text[start:end].strip()
+            sql_text = sql_text[start:end].strip()
         elif "```" in sql_text:
             start = sql_text.find("```") + 3
             end = sql_text.find("```", start)
-            return sql_text[start:end].strip()
-        else:
-            # 如果没有任何代码块标记，直接返回去除首尾空格的文本
-            return sql_text.strip()
+            sql_text = sql_text[start:end].strip()
+        
+        # 移除多余的换行符和多余空格，将多行SQL合并为单行
+        # 将多个连续的空白字符（包括换行符、制表符、空格）替换为单个空格
+        import re
+        cleaned_sql = re.sub(r'\s+', ' ', sql_text).strip()
+        
+        # 如果没有任何代码块标记，直接返回去除首尾空格的文本
+        return cleaned_sql
 
     def generate_response(self, question, sql, result, db_name):
         """
@@ -250,23 +255,18 @@ class MultiDatabaseQueryWithDeepSeek:
             db_name (str): 查询的数据库名称
 
         Returns:
-            str: 格式化的响应文本
+            dict: 结构化的响应数据
         """
-        return f"""
-                🤖 **查询结果**
-                
-                **数据库**: {db_name}
-                **您的问题**：{question}
-                
-                **生成的SQL**：
-                ```sql
-                {sql}
-                ```
-                
-                **查询结果**：
-                {result}
-                            
-                """
+        return {
+            "success": True,
+            "data": {
+                "database": db_name,
+                "question": question,
+                "sql": sql,
+                "result": result
+            },
+            "error": None
+        }
 
 def main():
     """
