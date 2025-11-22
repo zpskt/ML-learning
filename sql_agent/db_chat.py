@@ -4,6 +4,8 @@ from langchain_community.utilities.sql_database import SQLDatabase
 from openai import OpenAI
 import datetime
 import json
+import re
+import os
 
 
 class DeepSeekLLM:
@@ -73,7 +75,7 @@ class MultiDatabaseQueryWithDeepSeek:
     可以根据用户指定的数据库和自然语言问题自动生成 SQL 并执行查询
     """
 
-    def __init__(self, db_configs, deepseek_api_key, is_local=False):
+    def __init__(self, db_configs, deepseek_api_key, is_local=False, knowledge_base_file="knowledge_base.json"):
         """
         初始化多数据库查询器
 
@@ -81,6 +83,7 @@ class MultiDatabaseQueryWithDeepSeek:
             db_configs (dict): 数据库配置字典，格式为 {'db_name': 'db_uri', ...}
             deepseek_api_key (str): DeepSeek API 密钥（本地部署时可传任意值）
             is_local (bool): 是否为本地部署
+            knowledge_base_file (str): 知识库文件路径
         """
         # 存储数据库配置
         self.db_configs = db_configs
@@ -92,6 +95,10 @@ class MultiDatabaseQueryWithDeepSeek:
         self.llm = DeepSeekLLM(deepseek_api_key, is_local)
         # 初始化查询历史记录列表
         self.query_history = []
+        # 初始化知识库文件路径
+        self.knowledge_base_file = knowledge_base_file
+        # 初始化知识库
+        self.knowledge_base = self._load_knowledge_base()
 
     def connect_database(self, db_name):
         """
@@ -200,26 +207,36 @@ class MultiDatabaseQueryWithDeepSeek:
             # 记录查询开始时间
             start_time = datetime.datetime.now()
 
-            # 1. 生成提示词
-            prompt = self.generate_sql_prompt(user_question, db_name)
-            print("生成的提示词:", prompt[:500] + "..." if len(prompt) > 500 else prompt)  # 限制打印长度
+            # 1. 首先尝试在知识库中查找匹配的查询
+            knowledge_entry = self.search_knowledge(user_question, db_name)
+            
+            if knowledge_entry:
+                # 如果在知识库中找到了匹配项，直接使用预定义的SQL
+                sql_query = knowledge_entry["sql_query"]
+                print(f"从知识库中找到匹配项: {knowledge_entry['question_template']}")
+            else:
+                # 如果知识库中没有匹配项，使用原来的LLM生成方式
+                # 生成提示词
+                prompt = self.generate_sql_prompt(user_question, db_name)
+                print("生成的提示词:", prompt[:500] + "..." if len(prompt) > 500 else prompt)  # 限制打印长度
 
-            # 2. 调用模型生成SQL和自然语言回答
-            llm_response = self.llm.invoke(prompt)
-            print(f"模型返回的原始结果: {llm_response}")
+                # 调用模型生成SQL和自然语言回答
+                llm_response = self.llm.invoke(prompt)
+                print(f"模型返回的原始结果: {llm_response}")
 
-            # 3. 提取纯净的sql查询
-            sql_query = self.clean_sql_query(llm_response)
+                # 提取纯净的sql查询
+                sql_query = self.clean_sql_query(llm_response)
+            
             print(f"解析后的SQL: {sql_query}")
 
-            # 4. 执行查询
+            # 执行查询
             result = self.databases[self.current_db].run(sql_query)
 
-            # 5. 解析SQL语句，提取表名
+            # 解析SQL语句，提取表名
             table_names = self._extract_table_names(sql_query)
-            # 6. 生成自然语言回答
-            natural_response = self._generate_natural_response(user_question,result,table_names )
-            # 6. 返回结果
+            # 生成自然语言回答
+            natural_response = self._generate_natural_response(user_question, result, table_names)
+            # 返回结果
             response = {
                 "success": True,
                 "data": {
@@ -228,7 +245,8 @@ class MultiDatabaseQueryWithDeepSeek:
                     "question": user_question,
                     "sql": sql_query,
                     "result": result,
-                    "natural_response": natural_response
+                    "natural_response": natural_response,
+                    "from_knowledge_base": knowledge_entry is not None
                 },
                 "error": None
             }
@@ -245,7 +263,8 @@ class MultiDatabaseQueryWithDeepSeek:
                 "sql": sql_query,
                 "result": result,
                 "success": True,
-                "error": None
+                "error": None,
+                "from_knowledge_base": knowledge_entry is not None
             })
 
             return response
@@ -549,6 +568,189 @@ class MultiDatabaseQueryWithDeepSeek:
             natural_response = natural_response[len("自然语言回答："):].strip()
         
         return natural_response
+    
+    def _load_knowledge_base(self):
+        """
+        从文件加载知识库
+        
+        Returns:
+            list: 知识库条目列表
+        """
+        if os.path.exists(self.knowledge_base_file):
+            try:
+                with open(self.knowledge_base_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"加载知识库文件时出错: {e}")
+                return []
+        else:
+            # 如果文件不存在，创建一个空的知识库文件
+            self._save_knowledge_base([])
+            return []
+    
+    def _save_knowledge_base(self, knowledge_base):
+        """
+        保存知识库到文件
+        
+        Args:
+            knowledge_base (list): 知识库条目列表
+        """
+        try:
+            with open(self.knowledge_base_file, 'w', encoding='utf-8') as f:
+                json.dump(knowledge_base, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存知识库文件时出错: {e}")
+    
+    def add_knowledge(self, question_template, sql_query, database, description=""):
+        """
+        添加知识库条目
+        
+        Args:
+            question_template (str): 问题模板
+            sql_query (str): 对应的SQL查询
+            database (str): 适用的数据库
+            description (str): 描述信息
+            
+        Returns:
+            dict: 添加的知识条目
+        """
+        knowledge_entry = {
+            "id": len(self.knowledge_base) + 1,
+            "question_template": question_template,
+            "sql_query": sql_query,
+            "database": database,
+            "description": description,
+            "created_at": datetime.datetime.now().isoformat()
+        }
+        
+        self.knowledge_base.append(knowledge_entry)
+        self._save_knowledge_base(self.knowledge_base)
+        return knowledge_entry
+    
+    def update_knowledge(self, knowledge_id, question_template=None, sql_query=None, database=None, description=None):
+        """
+        更新知识库条目
+        
+        Args:
+            knowledge_id (int): 知识条目ID
+            question_template (str, optional): 问题模板
+            sql_query (str, optional): 对应的SQL查询
+            database (str, optional): 适用的数据库
+            description (str, optional): 描述信息
+            
+        Returns:
+            dict: 更新后的知识条目，如果未找到返回None
+        """
+        for entry in self.knowledge_base:
+            if entry["id"] == knowledge_id:
+                if question_template is not None:
+                    entry["question_template"] = question_template
+                if sql_query is not None:
+                    entry["sql_query"] = sql_query
+                if database is not None:
+                    entry["database"] = database
+                if description is not None:
+                    entry["description"] = description
+                entry["updated_at"] = datetime.datetime.now().isoformat()
+                self._save_knowledge_base(self.knowledge_base)
+                return entry
+        return None
+    
+    def delete_knowledge(self, knowledge_id):
+        """
+        删除知识库条目
+        
+        Args:
+            knowledge_id (int): 知识条目ID
+            
+        Returns:
+            bool: 删除是否成功
+        """
+        for i, entry in enumerate(self.knowledge_base):
+            if entry["id"] == knowledge_id:
+                del self.knowledge_base[i]
+                # 更新后续条目的ID
+                for j in range(i, len(self.knowledge_base)):
+                    self.knowledge_base[j]["id"] = j + 1
+                self._save_knowledge_base(self.knowledge_base)
+                return True
+        return False
+    
+    def get_knowledge(self, knowledge_id=None):
+        """
+        获取知识库条目
+        
+        Args:
+            knowledge_id (int, optional): 知识条目ID，如果为None则返回所有条目
+            
+        Returns:
+            dict or list: 知识条目或条目列表
+        """
+        if knowledge_id is not None:
+            for entry in self.knowledge_base:
+                if entry["id"] == knowledge_id:
+                    return entry
+            return None
+        return self.knowledge_base
+    
+    def search_knowledge(self, user_question, database=None):
+        """
+        在知识库中搜索匹配的条目
+        
+        Args:
+            user_question (str): 用户问题
+            database (str, optional): 指定数据库
+            
+        Returns:
+            dict: 最佳匹配的知识条目，如果没有匹配项返回None
+        """
+        best_match = None
+        best_score = 0
+        
+        for entry in self.knowledge_base:
+            # 如果指定了数据库，且条目不适用于该数据库，则跳过
+            if database and entry["database"] != database:
+                continue
+                
+            # 计算匹配度 - 简单实现，可以根据需要改进
+            score = self._calculate_similarity(user_question, entry["question_template"])
+            
+            if score > best_score:
+                best_score = score
+                best_match = entry
+        
+        # 设定一个阈值，只有匹配度足够高才返回
+        if best_score > 0.5:
+            return best_match
+        return None
+    
+    def _calculate_similarity(self, question1, question2):
+        """
+        计算两个问题之间的相似度（简化实现）
+        
+        Args:
+            question1 (str): 问题1
+            question2 (str): 问题2
+            
+        Returns:
+            float: 相似度得分 (0-1)
+        """
+        # 转为小写并移除标点符号
+        q1 = re.sub(r'[^\w\s]', '', question1.lower())
+        q2 = re.sub(r'[^\w\s]', '', question2.lower())
+        
+        # 分割为词汇集合
+        words1 = set(q1.split())
+        words2 = set(q2.split())
+        
+        # 计算交集和并集
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        # 计算Jaccard相似度
+        if len(union) == 0:
+            return 1.0 if len(intersection) == 0 else 0.0
+        return len(intersection) / len(union)
 
 def main():
     """

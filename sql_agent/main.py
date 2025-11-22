@@ -18,13 +18,28 @@ class ExportRequest(BaseModel):
     query_result: str
     filename: str = "query_result.csv"
 
+class KnowledgeBaseEntry(BaseModel):
+    question_template: str
+    sql_query: str
+    database: str
+    description: str = ""
+
+class KnowledgeBaseUpdate(BaseModel):
+    id: int
+    question_template: str = None
+    sql_query: str = None
+    database: str = None
+    description: str = None
+
+class KnowledgeBaseId(BaseModel):
+    id: int
+
 DB_CONFIGS = {
     "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
-    "ecommerce_management": "mysql+pymysql://root:zhangpeng@localhost:3306/ecommerce_management",
 }
 
-# 创建查询对象
-db_query = MultiDatabaseQueryWithDeepSeek(DB_CONFIGS, "sk-***", is_local=True)
+# 创建查询对象，指定知识库文件路径
+db_query = MultiDatabaseQueryWithDeepSeek(DB_CONFIGS, "sk-***", is_local=True, knowledge_base_file="knowledge_base.json")
 
 @app.get("/")
 def read_root():
@@ -57,7 +72,6 @@ def get_history_get(limit: int = 10):
 @app.post("/export/csv")
 def export_to_csv(request: ExportRequest):
     """
-    TODO 这里需要完善、添加联动
     将查询结果导出为 CSV 格式
     """
     try:
@@ -71,6 +85,75 @@ def export_to_csv(request: ExportRequest):
             headers={"Content-Disposition": f"attachment; filename={request.filename}"}
         )
         return response
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# 知识库管理接口
+@app.post("/knowledge")
+def add_knowledge(entry: KnowledgeBaseEntry):
+    """
+    添加知识库条目
+    """
+    try:
+        knowledge_entry = db_query.add_knowledge(
+            question_template=entry.question_template,
+            sql_query=entry.sql_query,
+            database=entry.database,
+            description=entry.description
+        )
+        return {"success": True, "data": knowledge_entry}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.put("/knowledge")
+def update_knowledge(update_data: KnowledgeBaseUpdate):
+    """
+    更新知识库条目
+    """
+    try:
+        knowledge_entry = db_query.update_knowledge(
+            knowledge_id=update_data.id,
+            question_template=update_data.question_template,
+            sql_query=update_data.sql_query,
+            database=update_data.database,
+            description=update_data.description
+        )
+        if knowledge_entry:
+            return {"success": True, "data": knowledge_entry}
+        else:
+            return {"success": False, "error": "Knowledge entry not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.delete("/knowledge")
+def delete_knowledge(entry_id: KnowledgeBaseId):
+    """
+    删除知识库条目
+    """
+    try:
+        result = db_query.delete_knowledge(entry_id.id)
+        if result:
+            return {"success": True, "message": "Knowledge entry deleted"}
+        else:
+            return {"success": False, "error": "Knowledge entry not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/knowledge")
+def get_knowledge(knowledge_id: int = None):
+    """
+    获取知识库条目
+    """
+    try:
+        if knowledge_id is not None:
+            knowledge_entry = db_query.get_knowledge(knowledge_id)
+            if knowledge_entry:
+                return {"success": True, "data": knowledge_entry}
+            else:
+                return {"success": False, "error": "Knowledge entry not found"}
+        else:
+            knowledge_entries = db_query.get_knowledge()
+            return {"success": True, "data": knowledge_entries}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
