@@ -1,3 +1,5 @@
+import csv
+import io
 from langchain_community.utilities.sql_database import SQLDatabase
 from openai import OpenAI
 import datetime
@@ -316,7 +318,82 @@ class MultiDatabaseQueryWithDeepSeek:
         # 如果没有任何代码块标记，直接返回去除首尾空格的文本
         return cleaned_sql
 
-
+    def export_to_csv(self, query_result, filename="query_result.csv"):
+        """
+        将查询结果导出为 CSV 格式
+        
+        Args:
+            query_result (str): 数据库查询结果字符串
+            filename (str): 导出文件名
+            
+        Returns:
+            str: CSV 格式的数据
+        """
+        try:
+            # 解析查询结果
+            parsed_result = self._parse_query_result(query_result)
+            
+            # 创建内存中的 CSV 文件
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # 写入数据
+            if parsed_result["headers"]:
+                writer.writerow(parsed_result["headers"])
+                
+            for row in parsed_result["rows"]:
+                writer.writerow(row)
+                
+            # 获取 CSV 字符串
+            csv_content = output.getvalue()
+            output.close()
+            
+            return csv_content
+        except Exception as e:
+            raise Exception(f"导出CSV失败: {str(e)}")
+    
+    def _parse_query_result(self, query_result):
+        """
+        解析查询结果字符串为结构化数据
+        
+        Args:
+            query_result (str): 数据库查询结果字符串
+            
+        Returns:
+            dict: 包含表头和行数据的字典
+        """
+        try:
+            # 尝试将字符串形式的结果转换为Python对象
+            import ast
+            parsed_result = ast.literal_eval(query_result)
+            
+            # 如果结果是列表
+            if isinstance(parsed_result, list):
+                if len(parsed_result) == 0:
+                    return {"headers": [], "rows": []}
+                    
+                # 如果是包含元组的列表（常见于数据库查询结果）
+                if isinstance(parsed_result[0], tuple):
+                    # 假设第一行是列标题（这只是一个简单的假设）
+                    # 在实际应用中，我们可能需要从查询中提取真实的列名
+                    headers = [f"Column_{i}" for i in range(len(parsed_result[0]))] if parsed_result else []
+                    rows = [list(row) for row in parsed_result]
+                    return {"headers": headers, "rows": rows}
+                # 如果是简单列表
+                else:
+                    headers = ["Value"]
+                    rows = [[item] for item in parsed_result]
+                    return {"headers": headers, "rows": rows}
+            else:
+                # 处理单个值的情况
+                headers = ["Result"]
+                rows = [[parsed_result]]
+                return {"headers": headers, "rows": rows}
+                
+        except (ValueError, SyntaxError):
+            # 如果解析失败，将整个结果作为一个单元格返回
+            return {"headers": ["Result"], "rows": [[query_result]]}
+    
     def _extract_table_names(self, sql_query):
         """
         从SQL查询中提取表名
