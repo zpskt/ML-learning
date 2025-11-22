@@ -9,6 +9,9 @@ class QueryRequest(BaseModel):
     user_question: str
     db_name: str
 
+class HistoryRequest(BaseModel):
+    limit: int = 10
+
 DB_CONFIGS = {
     "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
     "ecommerce_management": "mysql+pymysql://root:zhangpeng@localhost:3306/ecommerce_management",
@@ -28,6 +31,22 @@ def query_db(request: QueryRequest):
     response = db_query.query(user_question, db_name=request.db_name)
     
     return response
+
+@app.post("/history")
+def get_history(request: HistoryRequest):
+    """
+    获取查询历史记录
+    """
+    history = db_query.get_query_history(limit=request.limit)
+    return {"success": True, "data": history}
+
+@app.get("/history")
+def get_history_get(limit: int = 10):
+    """
+    通过GET请求获取查询历史记录
+    """
+    history = db_query.get_query_history(limit=limit)
+    return {"success": True, "data": history}
 
 if __name__ == "__main__":
     import uvicorn

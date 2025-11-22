@@ -1,5 +1,7 @@
 from langchain_community.utilities.sql_database import SQLDatabase
 from openai import OpenAI
+import datetime
+import json
 
 
 class DeepSeekLLM:
@@ -86,6 +88,8 @@ class MultiDatabaseQueryWithDeepSeek:
         self.current_db = None
         # 初始化 LLM 实例
         self.llm = DeepSeekLLM(deepseek_api_key, is_local)
+        # 初始化查询历史记录列表
+        self.query_history = []
 
     def connect_database(self, db_name):
         """
@@ -191,6 +195,9 @@ class MultiDatabaseQueryWithDeepSeek:
             if not self.current_db:
                 raise ValueError("未指定要查询的数据库")
 
+            # 记录查询开始时间
+            start_time = datetime.datetime.now()
+
             # 1. 生成提示词
             prompt = self.generate_sql_prompt(user_question, db_name)
             print("生成的提示词:", prompt[:500] + "..." if len(prompt) > 500 else prompt)  # 限制打印长度
@@ -223,10 +230,63 @@ class MultiDatabaseQueryWithDeepSeek:
                 },
                 "error": None
             }
+            
+            # 记录查询结束时间
+            end_time = datetime.datetime.now()
+            
+            # 添加到查询历史
+            self.add_to_history({
+                "timestamp": start_time.isoformat(),
+                "duration": (end_time - start_time).total_seconds(),
+                "question": user_question,
+                "database": self.current_db,
+                "sql": sql_query,
+                "result": result,
+                "success": True,
+                "error": None
+            })
+
             return response
 
         except Exception as e:
+            # 记录错误信息到历史
+            error_time = datetime.datetime.now()
+            self.add_to_history({
+                "timestamp": error_time.isoformat(),
+                "duration": 0,
+                "question": user_question,
+                "database": db_name or self.current_db,
+                "sql": "",
+                "result": "",
+                "success": False,
+                "error": str(e)
+            })
             return f"查询过程中出错：{str(e)}"
+
+    def add_to_history(self, record):
+        """
+        添加查询记录到历史列表
+
+        Args:
+            record (dict): 查询记录
+        """
+        self.query_history.append(record)
+        # 限制历史记录数量，最多保留100条记录
+        if len(self.query_history) > 100:
+            self.query_history.pop(0)  # 删除最旧的记录
+
+    def get_query_history(self, limit=10):
+        """
+        获取查询历史记录
+
+        Args:
+            limit (int): 返回记录的数量限制，默认为10条
+
+        Returns:
+            list: 查询历史记录列表
+        """
+        # 返回最近的limit条记录，按时间倒序排列
+        return self.query_history[-limit:][::-1]
 
     def clean_sql_query(self, sql_text):
         """
