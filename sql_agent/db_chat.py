@@ -63,53 +63,101 @@ class DeepSeekLLM:
             return f"API调用失败: {str(e)}"
 
 
-class DatabaseQueryWithDeepSeek:
+class MultiDatabaseQueryWithDeepSeek:
     """
-    结合 DeepSeek LLM 和数据库的查询类
-    可以根据自然语言问题自动生成 SQL 并执行查询
+    支持多数据库查询的类
+    可以根据用户指定的数据库和自然语言问题自动生成 SQL 并执行查询
     """
 
-    def __init__(self, db_uri, deepseek_api_key, is_local=False):
+    def __init__(self, db_configs, deepseek_api_key, is_local=False):
         """
-        初始化数据库查询器
+        初始化多数据库查询器
 
         Args:
-            db_uri (str): 数据库连接 URI
+            db_configs (dict): 数据库配置字典，格式为 {'db_name': 'db_uri', ...}
             deepseek_api_key (str): DeepSeek API 密钥（本地部署时可传任意值）
             is_local (bool): 是否为本地部署
         """
-        # 连接数据库
-        self.db = SQLDatabase.from_uri(db_uri)
+        # 存储数据库配置
+        self.db_configs = db_configs
+        # 初始化数据库连接字典
+        self.databases = {}
+        # 初始化当前数据库名称
+        self.current_db = None
         # 初始化 LLM 实例
         self.llm = DeepSeekLLM(deepseek_api_key, is_local)
 
-    def get_database_schema(self):
+    def connect_database(self, db_name):
         """
-        获取数据库 schema 信息，包括表结构等
+        连接到指定数据库
+
+        Args:
+            db_name (str): 数据库名称
+
+        Returns:
+            bool: 连接是否成功
+        """
+        if db_name not in self.db_configs:
+            raise ValueError(f"数据库 '{db_name}' 未在配置中找到")
+        
+        try:
+            # 连接数据库
+            self.databases[db_name] = SQLDatabase.from_uri(self.db_configs[db_name])
+            self.current_db = db_name
+            return True
+        except Exception as e:
+            raise ConnectionError(f"连接数据库 '{db_name}' 失败: {str(e)}")
+
+    def get_database_schema(self, db_name=None):
+        """
+        获取指定数据库的 schema 信息，包括表结构等
         这些信息将帮助模型理解数据库结构
+
+        Args:
+            db_name (str, optional): 数据库名称，如果为None则使用当前数据库
 
         Returns:
             str: 数据库表信息
         """
-        return self.db.get_table_info()
+        if not db_name:
+            db_name = self.current_db
+            
+        if not db_name or db_name not in self.databases:
+            raise ValueError("未指定数据库或数据库未连接")
+            
+        return self.databases[db_name].get_table_info()
 
-    def generate_sql_prompt(self, user_question):
+    def get_available_databases(self):
+        """
+        获取可用的数据库列表
+
+        Returns:
+            list: 可用数据库名称列表
+        """
+        return list(self.db_configs.keys())
+
+    def generate_sql_prompt(self, user_question, db_name=None):
         """
         生成给模型的提示词，包含数据库结构和用户问题
 
         Args:
             user_question (str): 用户的自然语言问题
+            db_name (str, optional): 数据库名称，如果为None则使用当前数据库
 
         Returns:
             str: 构造好的提示词
         """
+        if not db_name:
+            db_name = self.current_db
+            
         # 获取数据库 schema 信息
-        schema = self.get_database_schema()
+        schema = self.get_database_schema(db_name)
 
         # 构造完整的提示词，告诉模型数据库结构和要求
         prompt = f"""
         你是一个SQL专家。请根据以下数据库结构和用户问题，生成准确的SQL查询语句。
 
+        当前查询的数据库: {db_name}
         数据库结构：
         {schema}
 
@@ -125,19 +173,29 @@ class DatabaseQueryWithDeepSeek:
         """
         return prompt
 
-    def query(self, user_question):
+    def query(self, user_question, db_name=None):
         """
         执行完整的查询流程：生成提示词 -> 调用LLM -> 执行SQL -> 返回结果
 
         Args:
             user_question (str): 用户的自然语言问题
+            db_name (str, optional): 数据库名称，如果为None则使用当前数据库
 
         Returns:
             str: 格式化的查询结果，包含问题、SQL和执行结果
         """
         try:
+            # 如果指定了数据库，则切换到该数据库
+            if db_name:
+                if db_name not in self.databases:
+                    self.connect_database(db_name)
+                self.current_db = db_name
+            
+            if not self.current_db:
+                raise ValueError("未指定要查询的数据库")
+
             # 1. 生成提示词
-            prompt = self.generate_sql_prompt(user_question)
+            prompt = self.generate_sql_prompt(user_question, db_name)
             print("生成的提示词:", prompt[:500] + "..." if len(prompt) > 500 else prompt)  # 限制打印长度
 
             # 2. 调用模型生成SQL
@@ -149,10 +207,10 @@ class DatabaseQueryWithDeepSeek:
             print(f"清理后的SQL: {sql_query}")
 
             # 4. 执行查询
-            result = self.db.run(sql_query)
+            result = self.databases[self.current_db].run(sql_query)
 
             # 5. 生成自然语言回复
-            response = self.generate_response(user_question, sql_query, result)
+            response = self.generate_response(user_question, sql_query, result, self.current_db)
             return response
 
         except Exception as e:
@@ -181,7 +239,7 @@ class DatabaseQueryWithDeepSeek:
             # 如果没有任何代码块标记，直接返回去除首尾空格的文本
             return sql_text.strip()
 
-    def generate_response(self, question, sql, result):
+    def generate_response(self, question, sql, result, db_name):
         """
         生成友好的自然语言回复
 
@@ -189,6 +247,7 @@ class DatabaseQueryWithDeepSeek:
             question (str): 用户的问题
             sql (str): 执行的 SQL 查询语句
             result (str): 查询结果
+            db_name (str): 查询的数据库名称
 
         Returns:
             str: 格式化的响应文本
@@ -196,6 +255,7 @@ class DatabaseQueryWithDeepSeek:
         return f"""
                 🤖 **查询结果**
                 
+                **数据库**: {db_name}
                 **您的问题**：{question}
                 
                 **生成的SQL**：
@@ -210,24 +270,26 @@ class DatabaseQueryWithDeepSeek:
 
 def main():
     """
-    主函数，演示如何使用 DatabaseQueryWithDeepSeek 类
+    主函数，演示如何使用 MultiDatabaseQueryWithDeepSeek 类
     """
     # 示例用法
     # 从环境变量获取 API 密钥，如果没有设置则使用默认值
     DEEPSEEK_API_KEY = "sk-****"
 
-    # MySQL数据库连接信息
-    # 格式: mysql+pymysql://用户名:密码@主机:端口/数据库名
-    DB_URI = "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform"
+    # 多个数据库连接信息
+    # 格式: {'数据库名': '数据库URI', ...}
+    DB_CONFIGS = {
+        "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
+        "ecommerce_management": "mysql+pymysql://root:zhangpeng@localhost:3306/ecommerce_management",
+    }
 
     # 创建查询对象
-    db_query = DatabaseQueryWithDeepSeek(DB_URI, DEEPSEEK_API_KEY, is_local=True)
+    db_query = MultiDatabaseQueryWithDeepSeek(DB_CONFIGS, DEEPSEEK_API_KEY, is_local=True)
 
-    # 示例查询
-    user_question = "移动应用开发这个项目现在是由谁负责跟进？"
-    response = db_query.query(user_question)
+    # 示例查询 - 指定数据库
+    user_question = "有多少个用户使用？"
+    response = db_query.query(user_question, db_name="ecommerce_management")
     print(response)
-
 
 # 程序入口点
 if __name__ == '__main__':
