@@ -11,10 +11,12 @@
             <li>将查询结果可视化展示</li>
             <li>查看和管理查询历史</li>
             <li>管理知识库条目</li>
+            <li>管理系统配置</li>
           </ul>
           <el-button type="primary" @click="goToQuery">开始查询</el-button>
           <el-button @click="goToHistory">查看历史</el-button>
           <el-button @click="goToKnowledgeBase">知识库管理</el-button>
+          <el-button @click="goToConfig">系统配置</el-button>
         </div>
       </el-col>
     </el-row>
@@ -33,6 +35,9 @@ export default {
     },
     goToKnowledgeBase() {
       this.$router.push('/knowledge')
+    },
+    goToConfig() {
+      this.$router.push('/config')
     }
   }
 }

@@ -1,0 +1,4 @@
+base_url: http://localhost:11434/v1
+databases:
+  cloud_platform: mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform
+  storage: mongodb://localhost:27017/storage

@@ -31,7 +31,7 @@ class DeepSeekLLM:
     DeepSeek LLM 类，用于调用 DeepSeek API 生成文本
     """
 
-    def __init__(self, api_key, is_local=False, model=None):
+    def __init__(self, api_key, is_local=False, model=None, base_url=None):
         """
         初始化 DeepSeek LLM 客户端
 
@@ -39,6 +39,7 @@ class DeepSeekLLM:
             api_key (str): DeepSeek API 密钥（本地部署时可传任意值）
             is_local (bool): 是否为本地部署
             model (str): 模型名称，如果为None则自动选择
+            base_url (str): API的基础URL地址，如果为None则使用默认地址
         """
         # 设置模型名称
         if model is None:
@@ -51,12 +52,12 @@ class DeepSeekLLM:
         if is_local:
             self.client = OpenAI(
                 api_key=api_key or "ollama",  # 本地部署可传任意值
-                base_url="http://localhost:11434/v1"  # Ollama 的 API 地址
+                base_url=base_url or "http://localhost:11434/v1"  # Ollama 的 API 地址
             )
         else:
             self.client = OpenAI(
                 api_key=api_key,
-                base_url="https://api.deepseek.com"
+                base_url=base_url or "https://api.deepseek.com"
             )
 
     def invoke(self, prompt):
@@ -93,7 +94,7 @@ class MultiDatabaseQueryWithDeepSeek:
     可以根据用户指定的数据库和自然语言问题自动生成 SQL 并执行查询
     """
 
-    def __init__(self, db_configs, deepseek_api_key, is_local=False, knowledge_base_file="knowledge_base.json"):
+    def __init__(self, db_configs, deepseek_api_key, is_local=False, knowledge_base_file="knowledge_base.json", base_url=None):
         """
         初始化多数据库查询器
 
@@ -102,6 +103,7 @@ class MultiDatabaseQueryWithDeepSeek:
             deepseek_api_key (str): DeepSeek API 密钥（本地部署时可传任意值）
             is_local (bool): 是否为本地部署
             knowledge_base_file (str): 知识库文件路径
+            base_url (str): API的基础URL地址，如果为None则使用默认地址
         """
         # 存储数据库配置
         self.db_configs = db_configs
@@ -110,7 +112,7 @@ class MultiDatabaseQueryWithDeepSeek:
         # 初始化当前数据库名称
         self.current_db = None
         # 初始化 LLM 实例
-        self.llm = DeepSeekLLM(deepseek_api_key, is_local)
+        self.llm = DeepSeekLLM(deepseek_api_key, is_local, base_url=base_url)
         # 初始化查询历史记录列表
         self.query_history = []
         # 初始化知识库文件路径

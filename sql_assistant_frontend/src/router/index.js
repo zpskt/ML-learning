@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import QueryView from '../views/QueryView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import KnowledgeBaseView from '../views/KnowledgeBaseView.vue'
+import ConfigView from '../views/ConfigView.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/knowledge',
     name: 'knowledge',
     component: KnowledgeBaseView
+  },
+  {
+    path: '/config',
+    name: 'config',
+    component: ConfigView
   }
 ]
 
