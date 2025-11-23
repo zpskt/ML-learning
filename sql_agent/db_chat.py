@@ -16,6 +16,14 @@ except ImportError:
     MONGO_AVAILABLE = False
     print("警告: pymongo未安装，MongoDB支持将不可用")
 
+# 尝试导入图表生成器
+try:
+    from sql_agent.chart_generator import chart_generator
+    CHART_AVAILABLE = True
+except ImportError:
+    CHART_AVAILABLE = False
+    print("警告: 图表生成功能不可用")
+
 
 class DeepSeekLLM:
     """
@@ -108,6 +116,8 @@ class MultiDatabaseQueryWithDeepSeek:
         self.knowledge_base_file = knowledge_base_file
         # 初始化知识库
         self.knowledge_base = self._load_knowledge_base()
+        # 初始化图表生成器
+        self.chart_generator = chart_generator if CHART_AVAILABLE else None
 
     def connect_database(self, db_name):
         """
@@ -925,6 +935,35 @@ class MultiDatabaseQueryWithDeepSeek:
             return list(set(matches))  # 去重
         except Exception:
             return ["unknown"]
+    
+    def generate_chart(self, query_result: str, chart_type: str, title: str = "", 
+                      x_label: str = "", y_label: str = ""):
+        """
+        生成查询结果的图表
+        
+        Args:
+            query_result (str): 查询结果数据
+            chart_type (str): 图表类型 ('bar', 'line', 'pie', 'scatter', 'histogram')
+            title (str): 图表标题
+            x_label (str): X轴标签
+            y_label (str): Y轴标签
+            
+        Returns:
+            str: base64编码的图片数据
+        """
+        if not CHART_AVAILABLE:
+            raise Exception("图表生成功能不可用，请检查依赖库是否安装")
+        
+        if not self.chart_generator:
+            raise Exception("图表生成器未初始化")
+        
+        return self.chart_generator.generate_chart(
+            data=query_result,
+            chart_type=chart_type,
+            title=title,
+            x_label=x_label,
+            y_label=y_label
+        )
 
 def main():
     """

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import io
 
 from sql_agent.db_chat import MultiDatabaseQueryWithDeepSeek
@@ -33,6 +33,14 @@ class KnowledgeBaseUpdate(BaseModel):
 
 class KnowledgeBaseId(BaseModel):
     id: int
+
+class ChartRequest(BaseModel):
+    query_result: str
+    chart_type: str  # 'bar', 'line', 'pie', 'scatter', 'histogram'
+    title: str = ""
+    x_label: str = ""
+    y_label: str = ""
+
 
 DB_CONFIGS = {
     "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
@@ -157,6 +165,32 @@ def get_knowledge(knowledge_id: int = None):
             return {"success": True, "data": knowledge_entries}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.post("/chart/generate")
+def generate_chart(request: ChartRequest):
+    """
+    根据查询结果生成图表
+    """
+    try:
+        chart_data = db_query.generate_chart(
+            query_result=request.query_result,
+            chart_type=request.chart_type,
+            title=request.title,
+            x_label=request.x_label,
+            y_label=request.y_label
+        )
+        return JSONResponse(content={
+            "success": True,
+            "data": {
+                "chart_type": request.chart_type,
+                "image": chart_data  # base64编码的图片数据
+            }
+        })
+    except Exception as e:
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
 
 if __name__ == "__main__":
     import uvicorn
