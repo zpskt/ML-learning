@@ -36,6 +36,7 @@ class KnowledgeBaseId(BaseModel):
 
 DB_CONFIGS = {
     "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
+    "storage": "mongodb://localhost:27017/storage"
 }
 
 # 创建查询对象，指定知识库文件路径
