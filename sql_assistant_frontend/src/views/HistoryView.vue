@@ -95,6 +95,7 @@
 
 <script>
 import { getHistory, getHistoryPost } from '../api/history'
+import axios from 'axios'
 
 export default {
   name: 'HistoryView',
@@ -120,7 +121,8 @@ export default {
       try {
         const response = await getHistory({ limit: this.pageSize })
         if (response.data.success) {
-          this.historyItems = response.data.data
+          this.history = response.data.data
+          this.total = response.data.data.length
         } else {
           this.$message.error('获取历史记录失败: ' + response.data.error)
         }
@@ -137,7 +139,8 @@ export default {
       try {
         const response = await getHistoryPost({ limit: this.pageSize })
         if (response.data.success) {
-          this.historyItems = response.data.data
+          this.history = response.data.data
+          this.total = response.data.data.length
         } else {
           this.$message.error('获取历史记录失败: ' + response.data.error)
         }

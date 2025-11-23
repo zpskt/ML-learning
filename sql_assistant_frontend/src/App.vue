@@ -9,6 +9,7 @@
             <el-button type="text" @click="$router.push('/query')">查询</el-button>
             <el-button type="text" @click="$router.push('/history')">历史</el-button>
             <el-button type="text" @click="$router.push('/knowledge')">知识库</el-button>
+            <el-button type="text" @click="$router.push('/config')">系统配置</el-button>
           </div>
         </div>
       </el-header>

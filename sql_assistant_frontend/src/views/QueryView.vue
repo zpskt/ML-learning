@@ -185,7 +185,7 @@
 
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { queryDatabase, executeCustomSQL, generateChart, exportToCSV } from '../api/query'
+import { queryDatabase, executeCustomSQL, generateChart } from '../api/query'
 
 export default {
   name: 'QueryView',
@@ -212,7 +212,7 @@ export default {
   },
   methods: {
     async submitQuery() {
-      if (!this.userInput.trim()) {
+      if (!this.queryForm.question.trim()) {
         this.$message.warning('请输入查询内容')
         return
       }
@@ -220,14 +220,17 @@ export default {
       this.loading = true
       try {
         const response = await queryDatabase({
-          user_question: this.userInput,
-          db_name: this.selectedDb
+          user_question: this.queryForm.question,
+          db_name: this.queryForm.dbName
         })
 
         if (response.data.success !== false) {
           this.queryResult = response.data
-          this.resultType = 'table'
           this.$message.success('查询成功')
+          // 如果有查询结果，显示图表选项卡
+          if (response.data.data && response.data.data.result) {
+            this.showChartTab = true
+          }
         } else {
           this.$message.error('查询失败: ' + response.data.error)
         }
@@ -249,13 +252,16 @@ export default {
       try {
         const response = await executeCustomSQL({
           sql_query: this.customSQL,
-          db_name: this.selectedDb
+          db_name: this.queryForm.dbName
         })
 
         if (response.data.success !== false) {
           this.queryResult = response.data
-          this.resultType = 'table'
           this.$message.success('SQL执行成功')
+          // 如果有查询结果，显示图表选项卡
+          if (response.data.data && response.data.data.result) {
+            this.showChartTab = true
+          }
         } else {
           this.$message.error('SQL执行失败: ' + response.data.error)
         }
@@ -279,6 +285,8 @@ export default {
       this.chartGenerationError = ''
       this.chartForm.type = 'bar'
       this.chartForm.title = ''
+      this.directSQL = ''
+      this.showChartTab = false
     },
     
     copySQL() {
@@ -301,14 +309,14 @@ export default {
     },
     
     async executeCustomSQL() {
-      if (!this.customSQL) {
+      if (!this.customSQL.trim()) {
         this.$message.warning('请输入SQL语句')
         return
       }
       
       this.loading = true
       try {
-        const response = await axios.post('http://localhost:8000/execute-sql', {
+        const response = await executeCustomSQL({
           sql_query: this.customSQL,
           db_name: this.queryForm.dbName
         })
@@ -322,6 +330,10 @@ export default {
           this.chartForm.type = 'bar'
           this.chartForm.title = ''
           this.$message.success('SQL执行成功')
+          // 如果有查询结果，显示图表选项卡
+          if (response.data.data && response.data.data.result) {
+            this.showChartTab = true
+          }
         } else {
           this.$message.error('SQL执行失败: ' + response.data.error)
         }
@@ -339,14 +351,14 @@ export default {
     },
     
     async executeDirectSQL() {
-      if (!this.directSQL) {
+      if (!this.directSQL.trim()) {
         this.$message.warning('请输入SQL语句')
         return
       }
       
       this.loading = true
       try {
-        const response = await axios.post('http://localhost:8000/execute-sql', {
+        const response = await executeCustomSQL({
           sql_query: this.directSQL,
           db_name: this.queryForm.dbName
         })
@@ -359,6 +371,10 @@ export default {
           this.chartForm.type = 'bar'
           this.chartForm.title = ''
           this.$message.success('SQL执行成功')
+          // 如果有查询结果，显示图表选项卡
+          if (response.data.data && response.data.data.result) {
+            this.showChartTab = true
+          }
         } else {
           this.$message.error('SQL执行失败: ' + response.data.error)
         }
@@ -385,15 +401,14 @@ export default {
       try {
         const response = await generateChart({
           query_result: JSON.stringify(this.queryResult.data),
-          chart_type: this.chartConfig.type,
-          title: this.chartConfig.title,
-          x_label: this.chartConfig.xLabel,
-          y_label: this.chartConfig.yLabel
+          chart_type: this.chartForm.type,
+          title: this.chartForm.title,
+          x_label: '',
+          y_label: ''
         })
 
         if (response.data.success) {
           this.chartImage = response.data.data.image
-          this.resultType = 'chart'
           this.$message.success('图表生成成功')
         } else {
           this.$message.error('图表生成失败: ' + response.data.error)
@@ -403,35 +418,6 @@ export default {
         this.$message.error('图表生成失败: ' + error.message)
       } finally {
         this.chartLoading = false
-      }
-    },
-    
-    async exportToCSV() {
-      if (!this.queryResult || !this.queryResult.data) {
-        this.$message.warning('请先执行查询')
-        return
-      }
-
-      try {
-        const response = await exportToCSV({
-          query_result: JSON.stringify(this.queryResult.data),
-          filename: this.exportFileName
-        })
-
-        // 创建下载链接
-        const url = window.URL.createObjectURL(new Blob([response.data]))
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', this.exportFileName)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.URL.revokeObjectURL(url)
-
-        this.$message.success('导出成功')
-      } catch (error) {
-        console.error('导出出错:', error)
-        this.$message.error('导出失败: ' + error.message)
       }
     }
   }
