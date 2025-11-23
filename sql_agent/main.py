@@ -41,6 +41,9 @@ class ChartRequest(BaseModel):
     x_label: str = ""
     y_label: str = ""
 
+class CustomSQLRequest(BaseModel):
+    sql_query: str
+    db_name: str
 
 DB_CONFIGS = {
     "cloud_platform": "mysql+pymysql://root:zhangpeng@localhost:3306/cloud_platform",
@@ -186,6 +189,23 @@ def generate_chart(request: ChartRequest):
                 "image": chart_data  # base64编码的图片数据
             }
         })
+    except Exception as e:
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.post("/execute-sql")
+def execute_custom_sql(request: CustomSQLRequest):
+    """
+    执行用户自定义的SQL查询
+    """
+    try:
+        result = db_query.execute_custom_sql(
+            sql_query=request.sql_query,
+            db_name=request.db_name
+        )
+        return JSONResponse(content=result)
     except Exception as e:
         return JSONResponse(content={
             "success": False,

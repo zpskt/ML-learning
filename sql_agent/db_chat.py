@@ -965,6 +965,104 @@ class MultiDatabaseQueryWithDeepSeek:
             y_label=y_label
         )
 
+    def execute_custom_sql(self, sql_query: str, db_name: str = None):
+        """
+        执行用户自定义的SQL查询
+        
+        Args:
+            sql_query (str): 用户提供的SQL查询语句
+            db_name (str, optional): 数据库名称，如果为None则使用当前数据库
+            
+        Returns:
+            dict: 查询结果
+        """
+        try:
+            # 如果指定了数据库，则切换到该数据库
+            if db_name:
+                if db_name not in self.databases:
+                    self.connect_database(db_name)
+                self.current_db = db_name
+            
+            if not self.current_db:
+                raise ValueError("未指定要查询的数据库")
+            
+            # 记录查询开始时间
+            start_time = datetime.datetime.now()
+            
+            # 获取数据库类型
+            db_type = self.databases[self.current_db]['type']
+            
+            # 执行查询
+            if db_type == 'mongodb':
+                result = self._execute_mongodb_query(sql_query)
+            else:
+                # 对于SQL数据库，直接执行用户提供的查询
+                result = self.databases[self.current_db]['connection'].run(sql_query)
+            
+            # 解析查询语句，提取表名/集合名
+            if db_type == 'mongodb':
+                table_names = self._extract_mongodb_collection_names(sql_query)
+            else:
+                table_names = self._extract_table_names(sql_query)
+                
+            # 生成自然语言回答
+            natural_response = self._generate_natural_response("用户自定义查询", result, table_names)
+            
+            # 返回结果
+            response = {
+                "success": True,
+                "data": {
+                    "database": self.current_db,
+                    "database_type": db_type,
+                    "table_names": table_names,
+                    "question": "用户自定义查询",
+                    "query": sql_query,
+                    "result": result,
+                    "natural_response": natural_response
+                },
+                "error": None
+            }
+            
+            # 记录查询结束时间
+            end_time = datetime.datetime.now()
+            
+            # 添加到查询历史
+            self.add_to_history({
+                "timestamp": start_time.isoformat(),
+                "duration": (end_time - start_time).total_seconds(),
+                "question": "用户自定义查询",
+                "database": self.current_db,
+                "database_type": db_type,
+                "query": sql_query,
+                "result": result,
+                "success": True,
+                "error": None,
+                "custom_sql": True  # 标记这是用户自定义的SQL
+            })
+            
+            return response
+            
+        except Exception as e:
+            # 记录错误信息到历史
+            error_time = datetime.datetime.now()
+            self.add_to_history({
+                "timestamp": error_time.isoformat(),
+                "duration": 0,
+                "question": "用户自定义查询",
+                "database": db_name or self.current_db,
+                "query": sql_query,
+                "result": "",
+                "success": False,
+                "error": str(e),
+                "custom_sql": True
+            })
+            return {
+                "success": False,
+                "data": None,
+                "error": str(e)
+            }
+
+
 def main():
     """
     主函数，演示如何使用 MultiDatabaseQueryWithDeepSeek 类
