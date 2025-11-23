@@ -1,10 +1,21 @@
 from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 import io
 
 from sql_agent.db_chat import MultiDatabaseQueryWithDeepSeek
 
 app = FastAPI()
+
+# 添加CORS中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 在生产环境中应该指定具体的域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from pydantic import BaseModel
 
 class QueryRequest(BaseModel):
@@ -60,10 +71,20 @@ def read_root():
 @app.post("/query")
 def query_db(request: QueryRequest):
     # 示例查询 - 指定数据库
-    user_question = request.user_question
-    response = db_query.query(user_question, db_name=request.db_name)
-    
-    return response
+    try:
+        user_question = request.user_question
+        response = db_query.query(user_question, db_name=request.db_name)
+        return response
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"查询错误: {str(e)}")
+        print(f"详细错误信息:\n{error_details}")
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e),
+            "details": error_details
+        }, status_code=500)
 
 @app.post("/history")
 def get_history(request: HistoryRequest):
@@ -175,6 +196,7 @@ def generate_chart(request: ChartRequest):
     根据查询结果生成图表
     """
     try:
+        print(f"接收到图表生成请求: {request}")
         chart_data = db_query.generate_chart(
             query_result=request.query_result,
             chart_type=request.chart_type,
@@ -190,9 +212,14 @@ def generate_chart(request: ChartRequest):
             }
         })
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"图表生成错误: {str(e)}")
+        print(f"详细错误信息:\n{error_details}")
         return JSONResponse(content={
             "success": False,
-            "error": str(e)
+            "error": str(e),
+            "details": error_details
         }, status_code=500)
 
 @app.post("/execute-sql")
@@ -207,9 +234,14 @@ def execute_custom_sql(request: CustomSQLRequest):
         )
         return JSONResponse(content=result)
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"自定义SQL执行错误: {str(e)}")
+        print(f"详细错误信息:\n{error_details}")
         return JSONResponse(content={
             "success": False,
-            "error": str(e)
+            "error": str(e),
+            "details": error_details
         }, status_code=500)
 
 if __name__ == "__main__":
