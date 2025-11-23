@@ -34,6 +34,28 @@
         </el-card>
       </el-col>
       
+      <!-- 直接执行SQL区域 -->
+      <el-col :span="24">
+        <el-card class="direct-sql-card">
+          <template #header>
+            <div class="card-header">
+              <span>直接执行SQL</span>
+            </div>
+          </template>
+          
+          <el-input
+            v-model="directSQL"
+            type="textarea"
+            :rows="6"
+            placeholder="请输入SQL语句，例如：SELECT * FROM employees LIMIT 10"
+          ></el-input>
+          
+          <div style="margin-top: 15px;">
+            <el-button type="primary" @click="executeDirectSQL" :loading="loading">执行SQL</el-button>
+          </div>
+        </el-card>
+      </el-col>
+      
       <!-- 查询结果展示 -->
       <el-col :span="24" v-if="queryResult && queryResult.success">
         <el-card class="result-card">
@@ -177,6 +199,7 @@ export default {
       activeTab: 'natural',
       showCustomSQLEditor: false,
       customSQL: '',
+      directSQL: '',  // 添加直接SQL输入字段
       chartForm: {
         type: 'bar',
         title: ''
@@ -296,6 +319,43 @@ export default {
       }
     },
     
+    async executeDirectSQL() {
+      if (!this.directSQL) {
+        this.$message.warning('请输入SQL语句')
+        return
+      }
+      
+      this.loading = true
+      try {
+        const response = await axios.post('http://localhost:8000/execute-sql', {
+          sql_query: this.directSQL,
+          db_name: this.queryForm.dbName
+        })
+        
+        this.queryResult = response.data
+        if (response.data.success) {
+          // 重置图表相关状态
+          this.chartImage = ''
+          this.chartGenerationError = ''
+          this.chartForm.type = 'bar'
+          this.chartForm.title = ''
+          this.$message.success('SQL执行成功')
+        } else {
+          this.$message.error('SQL执行失败: ' + response.data.error)
+        }
+      } catch (error) {
+        console.error('执行SQL出错:', error)
+        this.queryResult = {
+          success: false,
+          error: error.message || '执行SQL过程中发生未知错误',
+          details: error.response ? error.response.data : null
+        }
+        this.$message.error('SQL执行失败: ' + error.message)
+      } finally {
+        this.loading = false
+      }
+    },
+    
     async generateChart() {
       if (!this.queryResult || !this.queryResult.data || !this.queryResult.data.result) {
         this.chartGenerationError = '没有可可视化的数据'
@@ -330,7 +390,7 @@ export default {
 </script>
 
 <style scoped>
-.query-card, .result-card, .custom-sql-card {
+.query-card, .result-card, .custom-sql-card, .direct-sql-card {
   margin-bottom: 20px;
 }
 

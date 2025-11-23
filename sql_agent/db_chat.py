@@ -1049,8 +1049,8 @@ class MultiDatabaseQueryWithDeepSeek:
             else:
                 table_names = self._extract_table_names(sql_query)
                 
-            # 生成自然语言回答
-            natural_response = self._generate_natural_response("用户自定义查询", result, table_names)
+            # 对于自定义SQL，不需要生成自然语言回答
+            natural_response = "这是用户自定义的SQL查询结果"
             
             # 返回结果
             response = {

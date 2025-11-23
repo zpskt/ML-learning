@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import QueryView from '../views/QueryView.vue'
 import HistoryView from '../views/HistoryView.vue'
+import KnowledgeBaseView from '../views/KnowledgeBaseView.vue'
 
 const routes = [
   {
@@ -18,6 +19,11 @@ const routes = [
     path: '/history',
     name: 'history',
     component: HistoryView
+  },
+  {
+    path: '/knowledge',
+    name: 'knowledge',
+    component: KnowledgeBaseView
   }
 ]
 
