@@ -184,7 +184,8 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { queryDatabase, executeCustomSQL, generateChart, exportToCSV } from '../api/query'
 
 export default {
   name: 'QueryView',
@@ -211,43 +212,61 @@ export default {
   },
   methods: {
     async submitQuery() {
-      if (!this.queryForm.question) {
-        this.$message.warning('请输入查询问题')
+      if (!this.userInput.trim()) {
+        this.$message.warning('请输入查询内容')
         return
       }
-      
+
       this.loading = true
       try {
-        const response = await axios.post('http://localhost:8000/query', {
-          user_question: this.queryForm.question,
-          db_name: this.queryForm.dbName
+        const response = await queryDatabase({
+          user_question: this.userInput,
+          db_name: this.selectedDb
         })
-        
-        this.queryResult = response.data
-        if (response.data.success) {
-          this.showChartTab = true
-          // 重置图表相关状态
-          this.chartImage = ''
-          this.chartGenerationError = ''
-          this.chartForm.type = 'bar'
-          this.chartForm.title = ''
+
+        if (response.data.success !== false) {
+          this.queryResult = response.data
+          this.resultType = 'table'
           this.$message.success('查询成功')
         } else {
           this.$message.error('查询失败: ' + response.data.error)
         }
       } catch (error) {
         console.error('查询出错:', error)
-        this.queryResult = {
-          success: false,
-          error: error.message || '查询过程中发生未知错误',
-          details: error.response ? error.response.data : null
-        }
-        this.$message.error('查询失败: ' + error.message)
+        this.$message.error('查询失败: ' + (error.response?.data?.error || error.message))
       } finally {
         this.loading = false
       }
     },
-    
+
+    async executeSQL() {
+      if (!this.customSQL.trim()) {
+        this.$message.warning('请输入SQL语句')
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await executeCustomSQL({
+          sql_query: this.customSQL,
+          db_name: this.selectedDb
+        })
+
+        if (response.data.success !== false) {
+          this.queryResult = response.data
+          this.resultType = 'table'
+          this.$message.success('SQL执行成功')
+        } else {
+          this.$message.error('SQL执行失败: ' + response.data.error)
+        }
+      } catch (error) {
+        console.error('执行SQL出错:', error)
+        this.$message.error('SQL执行失败: ' + (error.response?.data?.error || error.message))
+      } finally {
+        this.loading = false
+      }
+    },
+
     resetForm() {
       this.queryForm = {
         dbName: 'cloud_platform',
@@ -357,32 +376,62 @@ export default {
     },
     
     async generateChart() {
-      if (!this.queryResult || !this.queryResult.data || !this.queryResult.data.result) {
-        this.chartGenerationError = '没有可可视化的数据'
-        this.$message.warning('没有可可视化的数据')
+      if (!this.queryResult || !this.queryResult.data) {
+        this.$message.warning('请先执行查询')
         return
       }
-      
+
+      this.chartLoading = true
       try {
-        const response = await axios.post('http://localhost:8000/chart/generate', {
-          query_result: this.queryResult.data.result,
-          chart_type: this.chartForm.type,
-          title: this.chartForm.title
+        const response = await generateChart({
+          query_result: JSON.stringify(this.queryResult.data),
+          chart_type: this.chartConfig.type,
+          title: this.chartConfig.title,
+          x_label: this.chartConfig.xLabel,
+          y_label: this.chartConfig.yLabel
         })
-        
+
         if (response.data.success) {
           this.chartImage = response.data.data.image
-          this.chartGenerationError = ''
-          this.activeTab = 'chart'
+          this.resultType = 'chart'
           this.$message.success('图表生成成功')
         } else {
-          this.chartGenerationError = response.data.error
           this.$message.error('图表生成失败: ' + response.data.error)
         }
       } catch (error) {
         console.error('生成图表出错:', error)
-        this.chartGenerationError = error.message || '生成图表时发生未知错误'
         this.$message.error('图表生成失败: ' + error.message)
+      } finally {
+        this.chartLoading = false
+      }
+    },
+    
+    async exportToCSV() {
+      if (!this.queryResult || !this.queryResult.data) {
+        this.$message.warning('请先执行查询')
+        return
+      }
+
+      try {
+        const response = await exportToCSV({
+          query_result: JSON.stringify(this.queryResult.data),
+          filename: this.exportFileName
+        })
+
+        // 创建下载链接
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', this.exportFileName)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+
+        this.$message.success('导出成功')
+      } catch (error) {
+        console.error('导出出错:', error)
+        this.$message.error('导出失败: ' + error.message)
       }
     }
   }

@@ -6,7 +6,7 @@
           <template #header>
             <div class="card-header">
               <span>系统配置管理</span>
-              <el-button type="primary" @click="saveConfig" style="float: right; padding: 3px 0">保存配置</el-button>
+              <el-button type="primary" @click="saveConfig" style="float: right; padding: 3px 0" :loading="loading">保存配置</el-button>
             </div>
           </template>
           
@@ -88,7 +88,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { getConfig, updateConfig } from '../api/config'
 
 export default {
   name: 'ConfigView',
@@ -120,7 +120,7 @@ export default {
     async loadConfig() {
       this.loading = true
       try {
-        const response = await axios.get('http://localhost:8000/config')
+        const response = await getConfig()
         if (response.data.success) {
           const config = response.data.data
           this.databaseConfigs = { ...config.databases }
@@ -161,7 +161,7 @@ export default {
           base_url: this.llmConfig.base_url
         }
         
-        const response = await axios.put('http://localhost:8000/config', configData)
+        const response = await updateConfig(configData)
         if (response.data.success) {
           this.$message.success('配置保存成功')
         } else {

@@ -57,7 +57,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { getKnowledge, addKnowledge, updateKnowledge, deleteKnowledge } from '../api/knowledge'
 
 export default {
   name: 'KnowledgeBaseView',
@@ -84,7 +84,7 @@ export default {
     async loadKnowledgeBase() {
       this.loading = true
       try {
-        const response = await axios.get('http://localhost:8000/knowledge')
+        const response = await getKnowledge()
         if (response.data.success) {
           this.knowledgeBaseEntries = response.data.data
         } else {
@@ -123,7 +123,7 @@ export default {
         let response
         if (this.isEditing) {
           // 编辑条目
-          response = await axios.put('http://localhost:8000/knowledge', {
+          response = await updateKnowledge({
             id: this.currentEntry.id,
             question_template: this.currentEntry.question_template,
             sql_query: this.currentEntry.sql_query,
@@ -132,7 +132,7 @@ export default {
           })
         } else {
           // 添加新条目
-          response = await axios.post('http://localhost:8000/knowledge', {
+          response = await addKnowledge({
             question_template: this.currentEntry.question_template,
             sql_query: this.currentEntry.sql_query,
             database: this.currentEntry.database,
@@ -161,9 +161,7 @@ export default {
           type: 'warning'
         })
         
-        const response = await axios.delete('http://localhost:8000/knowledge', {
-          data: { id: id }
-        })
+        const response = await deleteKnowledge(id)
         
         if (response.data.success) {
           this.$message.success('删除成功')

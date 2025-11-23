@@ -94,7 +94,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { getHistory, getHistoryPost } from '../api/history'
 
 export default {
   name: 'HistoryView',
@@ -118,20 +118,32 @@ export default {
     async loadHistory() {
       this.loading = true
       try {
-        const response = await axios.get('http://localhost:8000/history', {
-          params: {
-            limit: this.pageSize
-          }
-        })
-        
+        const response = await getHistory({ limit: this.pageSize })
         if (response.data.success) {
-          this.history = response.data.data
-          this.total = this.history.length
+          this.historyItems = response.data.data
         } else {
-          this.$message.error('加载历史记录失败: ' + response.data.error)
+          this.$message.error('获取历史记录失败: ' + response.data.error)
         }
       } catch (error) {
-        this.$message.error('加载历史记录失败: ' + error.message)
+        console.error('获取历史记录出错:', error)
+        this.$message.error('获取历史记录失败: ' + error.message)
+      } finally {
+        this.loading = false
+      }
+    },
+    
+    async loadHistoryByPost() {
+      this.loading = true
+      try {
+        const response = await getHistoryPost({ limit: this.pageSize })
+        if (response.data.success) {
+          this.historyItems = response.data.data
+        } else {
+          this.$message.error('获取历史记录失败: ' + response.data.error)
+        }
+      } catch (error) {
+        console.error('获取历史记录出错:', error)
+        this.$message.error('获取历史记录失败: ' + error.message)
       } finally {
         this.loading = false
       }
