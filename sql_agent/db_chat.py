@@ -1,12 +1,13 @@
 import csv
+import datetime
 import io
+import json
+import os
+import re
+from urllib.parse import urlparse
+
 from langchain_community.utilities.sql_database import SQLDatabase
 from openai import OpenAI
-import datetime
-import json
-import re
-import os
-from urllib.parse import urlparse
 
 # 尝试导入MongoDB相关库
 try:
@@ -247,7 +248,7 @@ class MultiDatabaseQueryWithDeepSeek:
                - 每个聚合阶段都是一个对象
                - 使用 $sum: 1 来计算文档数量，而不是使用 $count 操作符
                - 正确的分组语法示例: {{ $group: {{ _id: "$category", count: {{ $sum: 1 }} }} }}
-            
+               - 而count字段不应该出现在$group外面 
             当前查询的数据库: {db_name} (MongoDB)
             数据库结构：
             {schema}
@@ -328,9 +329,16 @@ class MultiDatabaseQueryWithDeepSeek:
             
             # 执行查询
             if db_type == 'mongodb':
+                query_statement = 'db.ingredients.aggregate('+query_statement+')'
                 result = self._execute_mongodb_query(query_statement)
+                success = True
             else:
-                result = self.databases[self.current_db]['connection'].run(query_statement)
+                try:
+                    result = self.databases[self.current_db]['connection'].run(query_statement)
+                    success = True
+                except Exception as e:
+                    result = f"查询执行失败: {str(e)}"
+                    success = False
 
             # 解析查询语句，提取表名/集合名
             if db_type == 'mongodb':
@@ -342,7 +350,7 @@ class MultiDatabaseQueryWithDeepSeek:
             natural_response = self._generate_natural_response(user_question, result, table_names)
             # 返回结果
             response = {
-                "success": True,
+                "success": success,
                 "data": {
                     "database": self.current_db,
                     "database_type": db_type,
@@ -353,7 +361,7 @@ class MultiDatabaseQueryWithDeepSeek:
                     "natural_response": natural_response,
                     "from_knowledge_base": knowledge_entry is not None
                 },
-                "error": None
+                "error": None if success else result
             }
             
             # 记录查询结束时间
@@ -368,8 +376,8 @@ class MultiDatabaseQueryWithDeepSeek:
                 "database_type": db_type,
                 "query": query_statement,
                 "result": result,
-                "success": True,
-                "error": None,
+                "success": success,
+                "error": None if success else result,
                 "from_knowledge_base": knowledge_entry is not None
             })
 
@@ -388,7 +396,11 @@ class MultiDatabaseQueryWithDeepSeek:
                 "success": False,
                 "error": str(e)
             })
-            return f"查询过程中出错：{str(e)}"
+            return {
+                "success": False,
+                "data": None,
+                "error": f"查询过程中出错：{str(e)}"
+            }
 
     def add_to_history(self, record):
         """
@@ -874,11 +886,19 @@ class MultiDatabaseQueryWithDeepSeek:
             str: 查询结果
         """
         try:
+            # 获取当前数据库连接
+            if self.current_db not in self.databases:
+                raise ValueError(f"数据库 {self.current_db} 未连接")
+            
+            db_info = self.databases[self.current_db]
+            if db_info['type'] != 'mongodb':
+                raise ValueError(f"数据库 {self.current_db} 不是MongoDB类型")
+            
+            mongodb = db_info['database']
+            
             # 简单的MongoDB查询执行逻辑
             # 注意：这是一个简化的实现，实际应用中可能需要更复杂的解析
             
-            # 尝试解析查询语句
-            import ast
             # 移除可能的代码块标记
             if query_statement.startswith("```mongodb"):
                 query_statement = query_statement[10:]
@@ -900,13 +920,31 @@ class MultiDatabaseQueryWithDeepSeek:
                     pipeline_str = match.group(2)
                     
                     # 验证是否为有效的JSON/Python对象表示
-                    try:
-                        ast.literal_eval(pipeline_str)
-                        # 如果解析成功，则返回格式化的查询语句
-                        return f"MongoDB查询已执行: {query_statement}"
-                    except:
-                        # 如果解析失败，返回错误信息
-                        pass
+                    import ast
+                    pipeline = ast.literal_eval(pipeline_str)
+                    
+                    # 执行聚合查询
+                    collection = mongodb[collection_name]
+                    result = list(collection.aggregate(pipeline))
+                    
+                    # 将结果转换为字符串返回
+                    return str(result)
+            
+            # 如果是find查询
+            match_find = re.match(r'db\.([a-zA-Z_][a-zA-Z0-9_]*)\.find\((.*)\)', query_statement)
+            if match_find:
+                collection_name = match_find.group(1)
+                query_str = match_find.group(2)
+                
+                import ast
+                query = ast.literal_eval(query_str) if query_str else {}
+                
+                # 执行查询
+                collection = mongodb[collection_name]
+                result = list(collection.find(query).limit(100))  # 限制返回100条记录
+                
+                # 将结果转换为字符串返回
+                return str(result)
             
             # 这里我们假设查询语句是合法的MongoDB查询
             # 实际应用中，你可能需要更复杂的解析逻辑
@@ -995,9 +1033,15 @@ class MultiDatabaseQueryWithDeepSeek:
             # 执行查询
             if db_type == 'mongodb':
                 result = self._execute_mongodb_query(sql_query)
+                success = True
             else:
                 # 对于SQL数据库，直接执行用户提供的查询
-                result = self.databases[self.current_db]['connection'].run(sql_query)
+                try:
+                    result = self.databases[self.current_db]['connection'].run(sql_query)
+                    success = True
+                except Exception as e:
+                    result = f"查询执行失败: {str(e)}"
+                    success = False
             
             # 解析查询语句，提取表名/集合名
             if db_type == 'mongodb':
@@ -1010,7 +1054,7 @@ class MultiDatabaseQueryWithDeepSeek:
             
             # 返回结果
             response = {
-                "success": True,
+                "success": success,
                 "data": {
                     "database": self.current_db,
                     "database_type": db_type,
@@ -1020,7 +1064,7 @@ class MultiDatabaseQueryWithDeepSeek:
                     "result": result,
                     "natural_response": natural_response
                 },
-                "error": None
+                "error": None if success else result
             }
             
             # 记录查询结束时间
@@ -1035,8 +1079,8 @@ class MultiDatabaseQueryWithDeepSeek:
                 "database_type": db_type,
                 "query": sql_query,
                 "result": result,
-                "success": True,
-                "error": None,
+                "success": success,
+                "error": None if success else result,
                 "custom_sql": True  # 标记这是用户自定义的SQL
             })
             

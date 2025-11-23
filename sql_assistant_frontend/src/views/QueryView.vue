@@ -35,7 +35,7 @@
       </el-col>
       
       <!-- 查询结果展示 -->
-      <el-col :span="24" v-if="queryResult">
+      <el-col :span="24" v-if="queryResult && queryResult.success">
         <el-card class="result-card">
           <template #header>
             <div class="card-header">
@@ -46,8 +46,11 @@
           <div class="result-content">
             <el-tabs v-model="activeTab">
               <el-tab-pane label="自然语言回答" name="natural">
-                <div class="natural-response">
+                <div class="natural-response" v-if="queryResult.data && queryResult.data.natural_response">
                   {{ queryResult.data.natural_response }}
+                </div>
+                <div class="error-message" v-else>
+                  无法生成自然语言回答
                 </div>
               </el-tab-pane>
               
@@ -58,17 +61,24 @@
                     type="textarea"
                     :rows="6"
                     readonly
+                    v-if="queryResult.data && queryResult.data.query"
                   ></el-input>
+                  <div class="error-message" v-else>
+                    无法获取SQL语句
+                  </div>
                   <div class="sql-actions">
-                    <el-button @click="copySQL">复制SQL</el-button>
-                    <el-button type="primary" @click="editSQL">修改SQL</el-button>
+                    <el-button @click="copySQL" :disabled="!queryResult.data || !queryResult.data.query">复制SQL</el-button>
+                    <el-button type="primary" @click="editSQL" :disabled="!queryResult.data || !queryResult.data.query">修改SQL</el-button>
                   </div>
                 </div>
               </el-tab-pane>
               
               <el-tab-pane label="查询结果" name="result">
                 <div class="result-table">
-                  <pre>{{ queryResult.data.result }}</pre>
+                  <pre v-if="queryResult.data && queryResult.data.result">{{ queryResult.data.result }}</pre>
+                  <div class="error-message" v-else>
+                    无法获取查询结果
+                  </div>
                 </div>
               </el-tab-pane>
               
@@ -90,16 +100,37 @@
                     </el-form-item>
                     
                     <el-form-item>
-                      <el-button type="primary" @click="generateChart">生成图表</el-button>
+                      <el-button type="primary" @click="generateChart" :disabled="!queryResult.data || !queryResult.data.result">生成图表</el-button>
                     </el-form-item>
                   </el-form>
                   
                   <div class="chart-container" v-if="chartImage">
                     <img :src="'data:image/png;base64,' + chartImage" alt="查询结果图表" />
                   </div>
+                  <div class="error-message" v-else-if="chartGenerationError">
+                    {{ chartGenerationError }}
+                  </div>
                 </div>
               </el-tab-pane>
             </el-tabs>
+          </div>
+        </el-card>
+      </el-col>
+      
+      <!-- 查询错误信息 -->
+      <el-col :span="24" v-else-if="queryResult && !queryResult.success">
+        <el-card class="error-card">
+          <template #header>
+            <div class="card-header">
+              <span>查询出错</span>
+            </div>
+          </template>
+          <div class="error-message">
+            <p><strong>错误信息：</strong>{{ queryResult.error }}</p>
+            <div v-if="queryResult.details">
+              <p><strong>详细信息：</strong></p>
+              <pre>{{ queryResult.details }}</pre>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -151,6 +182,7 @@ export default {
         title: ''
       },
       chartImage: '',
+      chartGenerationError: '',
       showChartTab: false
     }
   },
@@ -169,9 +201,24 @@ export default {
         })
         
         this.queryResult = response.data
-        this.showChartTab = true
-        this.$message.success('查询成功')
+        if (response.data.success) {
+          this.showChartTab = true
+          // 重置图表相关状态
+          this.chartImage = ''
+          this.chartGenerationError = ''
+          this.chartForm.type = 'bar'
+          this.chartForm.title = ''
+          this.$message.success('查询成功')
+        } else {
+          this.$message.error('查询失败: ' + response.data.error)
+        }
       } catch (error) {
+        console.error('查询出错:', error)
+        this.queryResult = {
+          success: false,
+          error: error.message || '查询过程中发生未知错误',
+          details: error.response ? error.response.data : null
+        }
         this.$message.error('查询失败: ' + error.message)
       } finally {
         this.loading = false
@@ -187,16 +234,23 @@ export default {
       this.showCustomSQLEditor = false
       this.customSQL = ''
       this.chartImage = ''
+      this.chartGenerationError = ''
+      this.chartForm.type = 'bar'
+      this.chartForm.title = ''
     },
     
     copySQL() {
-      navigator.clipboard.writeText(this.queryResult.data.query)
-      this.$message.success('SQL已复制到剪贴板')
+      if (this.queryResult && this.queryResult.data && this.queryResult.data.query) {
+        navigator.clipboard.writeText(this.queryResult.data.query)
+        this.$message.success('SQL已复制到剪贴板')
+      }
     },
     
     editSQL() {
-      this.customSQL = this.queryResult.data.query
-      this.showCustomSQLEditor = true
+      if (this.queryResult && this.queryResult.data && this.queryResult.data.query) {
+        this.customSQL = this.queryResult.data.query
+        this.showCustomSQLEditor = true
+      }
     },
     
     cancelCustomSQL() {
@@ -219,8 +273,23 @@ export default {
         
         this.queryResult = response.data
         this.showCustomSQLEditor = false
-        this.$message.success('SQL执行成功')
+        if (response.data.success) {
+          // 重置图表相关状态
+          this.chartImage = ''
+          this.chartGenerationError = ''
+          this.chartForm.type = 'bar'
+          this.chartForm.title = ''
+          this.$message.success('SQL执行成功')
+        } else {
+          this.$message.error('SQL执行失败: ' + response.data.error)
+        }
       } catch (error) {
+        console.error('执行SQL出错:', error)
+        this.queryResult = {
+          success: false,
+          error: error.message || '执行SQL过程中发生未知错误',
+          details: error.response ? error.response.data : null
+        }
         this.$message.error('SQL执行失败: ' + error.message)
       } finally {
         this.loading = false
@@ -228,7 +297,8 @@ export default {
     },
     
     async generateChart() {
-      if (!this.queryResult || !this.queryResult.data.result) {
+      if (!this.queryResult || !this.queryResult.data || !this.queryResult.data.result) {
+        this.chartGenerationError = '没有可可视化的数据'
         this.$message.warning('没有可可视化的数据')
         return
       }
@@ -242,12 +312,16 @@ export default {
         
         if (response.data.success) {
           this.chartImage = response.data.data.image
+          this.chartGenerationError = ''
           this.activeTab = 'chart'
           this.$message.success('图表生成成功')
         } else {
+          this.chartGenerationError = response.data.error
           this.$message.error('图表生成失败: ' + response.data.error)
         }
       } catch (error) {
+        console.error('生成图表出错:', error)
+        this.chartGenerationError = error.message || '生成图表时发生未知错误'
         this.$message.error('图表生成失败: ' + error.message)
       }
     }
