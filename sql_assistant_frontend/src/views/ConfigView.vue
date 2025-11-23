@@ -10,9 +10,9 @@
             </div>
           </template>
           
-          <el-tabs v-model="activeTab">
+          <el-tabs v-model="activeTab" @tab-click="handleTabClick">
             <!-- 数据库配置 -->
-            <el-tab-pane label="数据库配置" name="database">
+            <el-tab-pane label="数据库配置" name="database" ref="databaseTab">
               <el-alert
                 title="注意：修改数据库配置后需要重启服务才能生效"
                 type="warning"
@@ -46,7 +46,7 @@
             </el-tab-pane>
             
             <!-- 大模型配置 -->
-            <el-tab-pane label="大模型配置" name="llm">
+            <el-tab-pane label="大模型配置" name="llm" ref="llmTab">
               <el-alert
                 title="注意：修改大模型配置后立即生效"
                 type="info"
@@ -173,6 +173,23 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    
+    // 处理标签页切换事件
+    handleTabClick(tab) {
+      // 使用nextTick确保DOM更新完成后再执行
+      this.$nextTick(() => {
+        // 延迟执行以避免ResizeObserver错误
+        setTimeout(() => {
+          // 如果切换到数据库配置标签页，重新计算表格布局
+          if (tab.name === 'database' && this.$refs.databaseTab) {
+            const table = this.$refs.databaseTab.$el.querySelector('.el-table')
+            if (table && table.__vue__ && table.__vue__.doLayout) {
+              table.__vue__.doLayout()
+            }
+          }
+        }, 50)
+      })
     }
   }
 }

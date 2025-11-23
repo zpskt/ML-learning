@@ -62,6 +62,7 @@
           <template #header>
             <div class="card-header">
               <span>查询结果</span>
+              <el-button @click="exportToCSV" style="float: right; padding: 3px 0" type="text">导出CSV</el-button>
             </div>
           </template>
           
@@ -185,7 +186,7 @@
 
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { queryDatabase, executeCustomSQL, generateChart } from '../api/query'
+import { queryDatabase, executeCustomSQL, generateChart, exportToCSV } from '../api/query'
 
 export default {
   name: 'QueryView',
@@ -207,7 +208,8 @@ export default {
       },
       chartImage: '',
       chartGenerationError: '',
-      showChartTab: false
+      showChartTab: false,
+      exportFileName: 'query_result.csv'  // 默认导出文件名
     }
   },
   methods: {
@@ -418,6 +420,35 @@ export default {
         this.$message.error('图表生成失败: ' + error.message)
       } finally {
         this.chartLoading = false
+      }
+    },
+    
+    async exportToCSV() {
+      if (!this.queryResult || !this.queryResult.data) {
+        this.$message.warning('请先执行查询')
+        return
+      }
+
+      try {
+        const response = await exportToCSV({
+          query_result: JSON.stringify(this.queryResult.data.result),
+          filename: this.exportFileName
+        })
+
+        // 创建下载链接
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', this.exportFileName)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+
+        this.$message.success('导出成功')
+      } catch (error) {
+        console.error('导出出错:', error)
+        this.$message.error('导出失败: ' + error.message)
       }
     }
   }
