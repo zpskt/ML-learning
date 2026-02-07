@@ -1,0 +1,8 @@
+```json
+{
+  "teaName": "黄金芽",
+  "teaType": "绿茶",
+  "coordinates": [364, 265, 866, 481]
+}
+```
+
