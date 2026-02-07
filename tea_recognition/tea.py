@@ -8,156 +8,47 @@ import json
 import re
 
 
-def cuttingImage(image_url, x1, y1, x2, y2, output_filename=None, auto_fix=True, verbose=True):
+def cuttingImage_ai(image_url, ai_coordinates, output_filename=None):
     '''
-    改进的切图函数：自动处理坐标问题
+    专门处理AI返回的[0, 999]归一化坐标
 
-    :param image_url: 图片的URL地址
-    :param x1: 裁剪区域左上角x坐标
-    :param y1: 裁剪区域左上角y坐标
-    :param x2: 裁剪区域右下角x坐标
-    :param y2: 裁剪区域右下角y坐标
+    :param image_url: 图片URL
+    :param ai_coordinates: AI返回的坐标，如 [0, 142, 999, 912]
     :param output_filename: 输出文件名
-    :param auto_fix: 是否自动修正超出边界的坐标
-    :param verbose: 是否显示详细信息
-    :return: 保存的文件路径或错误信息
     '''
     try:
-        if verbose:
-            print(f"📥 正在下载图片: {image_url}")
+        print(f"处理AI坐标: {ai_coordinates}")
 
-        # 下载图片
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-
-        # 打开图片
+        # 下载图片获取尺寸
+        response = requests.get(image_url)
         image = Image.open(BytesIO(response.content))
-        img_width, img_height = image.size
+        width, height = image.size
 
-        if verbose:
-            print(f"📐 图片实际尺寸: {img_width} x {img_height}")
-            print(f"📍 请求坐标: ({x1}, {y1}) -> ({x2}, {y2})")
-            print(f"📏 请求区域: {x2 - x1} x {y2 - y1}")
+        print(f"图片尺寸: {width}x{height}")
 
-        # 记录原始坐标
-        original_coords = (x1, y1, x2, y2)
+        # 将[0, 999]坐标转换为像素坐标
+        x1 = int((ai_coordinates[0] / 999) * width)
+        y1 = int((ai_coordinates[1] / 999) * height)
+        x2 = int((ai_coordinates[2] / 999) * width)
+        y2 = int((ai_coordinates[3] / 999) * height)
 
-        # 检查坐标问题
-        issues = []
-        if x1 < 0: issues.append(f"x1({x1}) < 0")
-        if y1 < 0: issues.append(f"y1({y1}) < 0")
-        if x2 > img_width: issues.append(f"x2({x2}) > 宽度({img_width})")
-        if y2 > img_height: issues.append(f"y2({y2}) > 高度({img_height})")
-        if x1 >= x2: issues.append(f"x1({x1}) >= x2({x2})")
-        if y1 >= y2: issues.append(f"y1({y1}) >= y2({y2})")
+        print(f"转换后像素坐标: ({x1}, {y1}) -> ({x2}, {y2})")
 
-        if issues:
-            if verbose:
-                print(f"⚠️  发现{len(issues)}个问题: {', '.join(issues)}")
+        # 裁剪
+        cropped = image.crop((x1, y1, x2, y2))
 
-            if not auto_fix:
-                raise ValueError(f"坐标无效: {', '.join(issues)}")
-
-            # 自动修正坐标
-            if verbose:
-                print("🔧 开始自动修正坐标...")
-
-            # 修正负值
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-
-            # 修正超出边界的值
-            x2 = min(x2, img_width)
-            y2 = min(y2, img_height)
-
-            # 确保x1 < x2, y1 < y2
-            if x1 >= x2:
-                if x1 >= img_width - 10:  # 如果x1在右边边界
-                    x1 = max(0, img_width - 200)  # 向左移动200像素
-                x2 = min(img_width, x1 + 100)  # 设置最小宽度100像素
-                if verbose:
-                    print(f"  修正x坐标: x1={x1}, x2={x2}")
-
-            if y1 >= y2:
-                if y1 >= img_height - 10:  # 如果y1在底部边界
-                    y1 = max(0, img_height - 200)  # 向上移动200像素
-                y2 = min(img_height, y1 + 150)  # 设置最小高度150像素
-                if verbose:
-                    print(f"  修正y坐标: y1={y1}, y2={y2}")
-
-            # 确保最小裁剪尺寸
-            min_width, min_height = 50, 50
-            if (x2 - x1) < min_width:
-                x2 = min(img_width, x1 + min_width)
-                if verbose:
-                    print(f"  宽度过小，调整为: {x2 - x1}像素")
-
-            if (y2 - y1) < min_height:
-                y2 = min(img_height, y1 + min_height)
-                if verbose:
-                    print(f"  高度过小，调整为: {y2 - y1}像素")
-
-            # 检查修正后的坐标
-            if x1 >= x2 or y1 >= y2:
-                # 如果修正后仍然无效，使用智能默认值
-                if verbose:
-                    print("⚠️  修正后坐标仍然无效，使用智能默认值")
-
-                # 根据图片尺寸设置合理的裁剪区域
-                if img_width >= 500 and img_height >= 500:
-                    # 大图片：裁剪中心70%区域
-                    margin_w = img_width // 6
-                    margin_h = img_height // 6
-                    x1, y1 = margin_w, margin_h
-                    x2, y2 = img_width - margin_w, img_height - margin_h
-                else:
-                    # 小图片：裁剪中心80%区域
-                    margin_w = img_width // 10
-                    margin_h = img_height // 10
-                    x1, y1 = margin_w, margin_h
-                    x2, y2 = img_width - margin_w, img_height - margin_h
-
-        if verbose:
-            print(f"✅ 最终坐标: ({x1}, {y1}) -> ({x2}, {y2})")
-            print(f"📏 裁剪区域: {x2 - x1} x {y2 - y1}")
-
-        # 裁剪图片
-        cropped_image = image.crop((x1, y1, x2, y2))
-
-        # 设置默认文件名
+        # 保存
         if output_filename is None:
-            import time
-            timestamp = int(time.time())
-            output_filename = f"cropped_tea_{timestamp}.jpg"
+            output_filename = "ai_cropped.jpg"
 
-        # 保存裁剪后的图片
-        cropped_image.save(output_filename)
+        cropped.save(output_filename)
+        print(f"✅ 保存: {output_filename}")
 
-        if verbose:
-            print(f"✅ 切图完成，已保存到: {output_filename}")
-            print(f"📊 裁剪后尺寸: {cropped_image.size}")
+        return output_filename
 
-        # 返回详细信息
-        return {
-            "file_path": output_filename,
-            "original_coords": original_coords,
-            "final_coords": (x1, y1, x2, y2),
-            "image_size": (img_width, img_height),
-            "crop_size": cropped_image.size,
-            "auto_fixed": len(issues) > 0,
-            "issues_found": issues
-        }
-
-    except requests.RequestException as e:
-        error_msg = f"下载图片失败: {e}"
-        if verbose:
-            print(f"❌ {error_msg}")
-        return {"error": error_msg}
     except Exception as e:
-        error_msg = f"切图过程出错: {e}"
-        if verbose:
-            print(f"❌ {error_msg}")
-        return {"error": error_msg}
+        print(f"❌ 错误: {e}")
+        return None
 #  编码函数： 将本地文件转换为 Base64 编码的字符串
 # local_path = "D:/workspace/zpskt/ML-learning/tea_recognition/tea.jpeg"
 
@@ -296,7 +187,7 @@ if __name__ == '__main__':
             # 执行切图
             output_filename = f"{tea_name}_{tea_type}.jpg"
             # 坐标位置为[0, 143, 1000, 912]
-            saved_path = cuttingImage(image_url, x1, y1, x2, y2, output_filename)
+            saved_path = cuttingImage_ai(image_url,coordinates,output_filename)
             if saved_path:
                 print(f"\n✅ 切图成功！保存路径: {saved_path}")
             else:
