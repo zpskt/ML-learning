@@ -159,14 +159,14 @@ def cuttingImage(image_url, x1, y1, x2, y2, output_filename=None, auto_fix=True,
             print(f"❌ {error_msg}")
         return {"error": error_msg}
 #  编码函数： 将本地文件转换为 Base64 编码的字符串
-local_path = "D:/workspace/zpskt/ML-learning/tea_recognition/tea.jpeg"
+# local_path = "D:/workspace/zpskt/ML-learning/tea_recognition/tea.jpeg"
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 # 将xxxx/eagle.png替换为你本地图像的绝对路径
-base64_image = encode_image(local_path)
+# base64_image = encode_image(local_path)
 
 
 def recognition(image_url):
@@ -181,7 +181,7 @@ def recognition(image_url):
     )
 
     completion = client.chat.completions.create(
-        model="qwen3-vl-plus",  # 此处以qwen3-vl-plus为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
+        model="qwen3-vl-32b-instruct",  # 此处以qwen3-vl-plus为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/models
         messages=[
             {
                 "role": "user",
