@@ -57,3 +57,11 @@ tea_recognition_project/
 ### paddleocr
 注意事项：要按照官方教程。并且如果numpy报错，换版本1.26.0。
 https://github.com/PaddlePaddle/PaddleOCR/blob/main/readme/README_cn.md
+
+```shell
+conda create -n tea --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ python=3.9
+
+python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+
+python -m pip install paddleocr
+```
