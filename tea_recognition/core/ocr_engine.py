@@ -7,8 +7,10 @@ import json
 from paddleocr import PaddleOCR
 import cv2
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union, Any
 import logging
+
+from tea_recognition.core.text_processor import TeaTextProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ class PaddleOCREngine:
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False)
+        self.text_processor = TeaTextProcessor()
         logger.info("PaddleOCR引擎初始化完成。")
 
     def recognize_from_url(self, image_url: str) -> Dict:
@@ -49,31 +52,42 @@ class PaddleOCREngine:
                 return {}
 
             # 2. 执行OCR识别
-            result = self.ocr.ocr(img, cls=True)
+            result = self.ocr.predict(input=img)
 
-            # 3. 提取所有文本
-            all_texts = []
-            if result and result[0]:
-                for line in result[0]:
-                    if line and len(line) >= 2:
-                        text = line[1][0]
-                        confidence = line[1][1]
-                        all_texts.append((text, confidence))
+            # # 可视化结果并保存 json 结果
+            # for res in result:
+            #     res.print()
+            #     res.save_to_img("output")
+            #     res.save_to_json("output")
+            result_json = result[0].json.get('res')
+            rec_texts = result_json['rec_texts']
 
-            # 4. 提取关键信息（模拟结构化输出）
-            structured_result = self._extract_tea_info(all_texts)
+            # 使用智能处理器替代原来的简单逻辑
+            tea_info = self.text_processor.process_ocr_texts(rec_texts)
 
-            logger.info(f"PaddleOCR识别成功，共识别{len(all_texts)}个文本块")
-            return structured_result
+            return {
+                "success": tea_info["success"],
+                "tea_name": tea_info["tea_name"],
+                "tea_type": tea_info["tea_type"],
+                "confidence": tea_info["confidence"],
+                "raw_ocr_texts": tea_info["raw_ocr_texts"],
+                "filtered_texts": tea_info["filtered_texts"],
+                "extraction_method": tea_info["extraction_method"]
+            }
 
         except Exception as e:
             logger.error(f"PaddleOCR识别失败: {e}")
             return {}
 
-    def recognize_from_path(self, image_path: str) -> Dict:
+    def recognize_from_path(self, image_path: str) -> Union[dict[Any, Any], tuple[str, float]]:
         """从本地文件路径识别"""
         try:
-            img = cv2.imread(image_path)
+            # 使用numpy读取文件以解决中文路径问题
+            import numpy as np
+            with open(image_path, 'rb') as f:
+                img_array = np.frombuffer(f.read(), np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            
             if img is None:
                 logger.error(f"无法读取图片: {image_path}")
                 return {}
@@ -87,53 +101,25 @@ class PaddleOCREngine:
             #     res.save_to_img("output")
             #     res.save_to_json("output")
             result_json = result[0].json.get('res')
+            rec_texts = result_json['rec_texts']
 
-            structured_result = self._extract_tea_info(result_json.get('rec_texts'))
-            return structured_result
+            # 使用智能处理器替代原来的简单逻辑
+            tea_info = self.text_processor.process_ocr_texts(rec_texts)
+
+            return {
+                "success": tea_info["success"],
+                "tea_name": tea_info["tea_name"],
+                "tea_type": tea_info["tea_type"],
+                "confidence": tea_info["confidence"],
+                "raw_ocr_texts": tea_info["raw_ocr_texts"],
+                "filtered_texts": tea_info["filtered_texts"],
+                "extraction_method": tea_info["extraction_method"]
+            }
 
         except Exception as e:
             logger.error(f"PaddleOCR识别失败: {e}")
             return {}
 
-    def _extract_tea_info(self, text_blocks: List[Tuple[str, float]]) -> Dict:
-        """
-        从OCR文本块中提取茶叶相关信息
-        这是简化版，你可以根据实际需求增强
-        """
-        # 将所有文本合并
-        full_text = " ".join([text for text, _ in text_blocks])
-
-        # 简单的关键词提取逻辑（你可以替换为更复杂的NLP方法）
-        result = {
-            "茶叶名称": "",
-            "生产日期": "",
-            "生产地": "",
-            "茶叶类型": "",
-            "raw_text": full_text,
-            "text_blocks": text_blocks
-        }
-
-        # 查找茶叶名称（包含"茶"字的文本）
-        for text, confidence in text_blocks:
-            if '茶' in text and len(text) <= 8:  # 假设茶叶名称较短
-                result["茶叶名称"] = text
-                break
-
-        # 查找生产地（包含"省"、"市"、"产地"等关键词）
-        for text, confidence in text_blocks:
-            if any(keyword in text for keyword in ["省", "市", "产地", "生产", "原产地"]):
-                result["生产地"] = text
-                break
-
-        # 查找生产日期（包含数字和年月日）
-        import re
-        date_pattern = r'\d{4}[年\.\-]\d{1,2}[月\.\-]\d{1,2}[日]?|\d{8}'
-        for text, confidence in text_blocks:
-            if re.search(date_pattern, text):
-                result["生产日期"] = text
-                break
-
-        return result
 
 
 # 使用示例
