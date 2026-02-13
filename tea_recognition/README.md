@@ -55,13 +55,22 @@ tea_recognition_project/
 
 ## 使用教程
 ### paddleocr
+paddle使用3.3.0  paddleocr要用3.2.0
 注意事项：要按照官方教程。并且如果numpy报错，换版本1.26.0。
 https://github.com/PaddlePaddle/PaddleOCR/blob/main/readme/README_cn.md
 
 ```shell
-conda create -n tea --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ python=3.9
+conda create -n tea --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ python=3.10
+conda activate tea
 
 python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
-
-python -m pip install paddleocr
+python -m pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+python -c "import paddle; print(paddle.__version__)"
+python -m pip install paddleocr -i https://mirrors.aliyun.com/pypi/simple/
 ```
+
+https://www.paddleocr.ai/latest/version3.x/pipeline_usage/OCR.html#42
+
+
+paddleocr ocr -i ./general_ocr_001.png --text_detection_model_name PP-OCRv5_server_rec --text_detection_model_dir PP-OCRv5_server_rec_infer
+paddleocr ocr -i ./general_ocr_001.png --text_detection_model_name PP-OCRv5_mobile_det --text_detection_model_dir your_v5_mobile_det_model_path
