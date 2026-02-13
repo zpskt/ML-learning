@@ -69,8 +69,45 @@ python -c "import paddle; print(paddle.__version__)"
 python -m pip install paddleocr -i https://mirrors.aliyun.com/pypi/simple/
 ```
 
-https://www.paddleocr.ai/latest/version3.x/pipeline_usage/OCR.html#42
+## 未来改进
+核心思路：从“识别所有文字”到“识别茶叶包装的文字”
+方案A：基于规则过滤（5分钟见效，0训练成本）
+原理：OCR检测出所有文本框 → 根据位置、大小、内容过滤 → 只保留茶叶包装区域的文字。
+优点：立即生效，零成本
+缺点：如果茶叶包装在顶部位置，会被误删
+
+方案B：基于版面分析（30分钟配置，规则+视觉）
+原理：先找“包装盒整体”，再找“包装盒内的文字”。
+
+优点：物理隔离，确保只处理包装盒内文字
+缺点：如果包装盒与背景对比度低，可能找不准
+
+方案D：关键信息提取（KIE）- 终极方案
+让模型直接告诉你“哪个文本框是茶叶名称”。
+
+今天就能做的：
+
+方案A：写20行过滤规则，立马见效
+
+方案B：轮廓检测找包装盒，30分钟配置
+
+本周可以做的：
+3. 方案C：标注30张图，训练检测模型，1小时工作量
+
+长期积累的：
+4. 方案D：积累200张标注图，训练KIE模型，实现全自动提取
+5. 
+你不需要放弃PaddleOCR，也不需要去学YOLO。PaddleOCR本身就是一个完整的目标检测框架。
+
+你遇到的问题（检测到多个文字区域）正是PaddleOCR检测模块要解决的问题。你只需要：
+
+告诉模型“什么是茶叶包装”（标注30张图）
+
+训练一个专属检测头（1小时）
+
+永久解决噪声干扰问题
+
+整个流程都在Paddle生态内，不用写一行YOLO代码，完全可商用。
 
 
-paddleocr ocr -i ./general_ocr_001.png --text_detection_model_name PP-OCRv5_server_rec --text_detection_model_dir PP-OCRv5_server_rec_infer
-paddleocr ocr -i ./general_ocr_001.png --text_detection_model_name PP-OCRv5_mobile_det --text_detection_model_dir your_v5_mobile_det_model_path
+
