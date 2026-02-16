@@ -248,10 +248,11 @@ def main():
     # 3. 测试用的图片URL（这里用模拟数据，实际请替换为真实茶叶图片URL）
     test_images = [
         "https://file.linkcook.cn/image/food/app/photo/e92d309b-7dd9-4ab6-9c1b-1dd701e571dd.jpg",
+        "https://file.linkcook.cn/image/food/app/photo/e92d309b-7dd9-4ab6-9c1b-1dd701e571dd.jpg",
     ]
 
     # 4. 批量识别
-    for i, img_url in enumerate(test_images[:1]):  # 只测试第一张
+    for i, img_url in enumerate(test_images[:]):
         print(f"\n{'=' * 60}")
         print(f"测试图片 {i + 1}: {img_url}")
         print(f"{'=' * 60}")

@@ -1,0 +1,40 @@
+SubModules:
+  TextDetection:
+    box_thresh: 0.6
+    limit_side_len: 64
+    limit_type: min
+    max_side_limit: 4000
+    model_dir: null # 替换为微调后的文本测模型权重路径
+    model_name: PP-OCRv5_server_det # 如果微调的模型名称与默认模型名称不同，请一并修改此处
+    module_name: text_detection
+    thresh: 0.3
+    unclip_ratio: 1.5
+  TextLineOrientation:
+    batch_size: 6
+    model_dir: null
+    model_name: PP-LCNet_x1_0_textline_ori  # 替换为微调后的文本行方向分类模型权重路径
+    module_name: textline_orientation # 如果微调的模型名称与默认模型名称不同，请一并修改此处
+  TextRecognition:
+    batch_size: 6
+    model_dir: null
+    model_name: PP-OCRv5_server_rec  # 替换为微调后的文本识模型权重路径
+    module_name: text_recognition # 如果微调的模型名称与默认模型名称不同，请一并修改此处
+    score_thresh: 0.0
+SubPipelines:
+  DocPreprocessor:
+    SubModules:
+      DocOrientationClassify:
+        model_dir: null
+        model_name: PP-LCNet_x1_0_doc_ori
+        module_name: doc_text_orientation
+      DocUnwarping:
+        model_dir: null
+        model_name: UVDoc
+        module_name: image_unwarping
+    pipeline_name: doc_preprocessor
+    use_doc_orientation_classify: true
+    use_doc_unwarping: true
+pipeline_name: OCR
+text_type: general
+use_doc_preprocessor: true
+use_textline_orientation: true

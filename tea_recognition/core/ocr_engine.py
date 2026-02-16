@@ -4,7 +4,7 @@
 # @Software: PyCharm
 import json
 
-from paddleocr import PaddleOCR
+from paddleocr import PaddleOCR, TextRecognition
 import cv2
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Union, Any
@@ -17,19 +17,14 @@ logger = logging.getLogger(__name__)
 
 class PaddleOCREngine:
     """PaddleOCR引擎封装"""
-
-    def __init__(self, use_angle_cls=True, lang='ch', use_gpu=False):
+    def __init__(self, yaml_file_path: str ):
         """
         初始化PaddleOCR
         :param use_angle_cls: 是否使用方向分类器
         :param lang: 识别语言，'ch'中文，'en'英文
         :param use_gpu: 是否使用GPU
         """
-        logger.info(f"初始化PaddleOCR引擎 (语言: {lang}, GPU: {use_gpu})...")
-        self.ocr = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False)
+        self.ocr = PaddleOCR(paddlex_config=yaml_file_path)
         self.text_processor = TeaTextProcessor()
         logger.info("PaddleOCR引擎初始化完成。")
 
@@ -52,29 +47,28 @@ class PaddleOCREngine:
                 return {}
 
             # 2. 执行OCR识别
-            result = self.ocr.predict(input=img)
+            return self.ocr.predict(input=img)
 
             # # 可视化结果并保存 json 结果
             # for res in result:
             #     res.print()
             #     res.save_to_img("output")
             #     res.save_to_json("output")
-            result_json = result[0].json.get('res')
-            rec_texts = result_json['rec_texts']
-
-            # 使用智能处理器替代原来的简单逻辑
-            tea_info = self.text_processor.process_ocr_texts(rec_texts)
-
-            return {
-                "success": tea_info["success"],
-                "tea_name": tea_info["tea_name"],
-                "tea_type": tea_info["tea_type"],
-                "confidence": tea_info["confidence"],
-                "raw_ocr_texts": tea_info["raw_ocr_texts"],
-                "filtered_texts": tea_info["filtered_texts"],
-                "extraction_method": tea_info["extraction_method"]
-            }
-
+            # result_json = result[0].json.get('res')
+            # rec_texts = result_json['rec_texts']
+            #
+            # # 使用智能处理器替代原来的简单逻辑
+            # tea_info = self.text_processor.process_ocr_texts(rec_texts)
+            #
+            # return {
+            #     "success": tea_info["success"],
+            #     "tea_name": tea_info["tea_name"],
+            #     "tea_type": tea_info["tea_type"],
+            #     "confidence": tea_info["confidence"],
+            #     "raw_ocr_texts": tea_info["raw_ocr_texts"],
+            #     "filtered_texts": tea_info["filtered_texts"],
+            #     "extraction_method": tea_info["extraction_method"]
+            # }
         except Exception as e:
             logger.error(f"PaddleOCR识别失败: {e}")
             return {}
@@ -87,34 +81,15 @@ class PaddleOCREngine:
             with open(image_path, 'rb') as f:
                 img_array = np.frombuffer(f.read(), np.uint8)
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            
+
             if img is None:
                 logger.error(f"无法读取图片: {image_path}")
                 return {}
 
             # 对示例图像执行 OCR 推理
-            result = self.ocr.predict(input=img)
+            return self.ocr.predict(input=img)
 
-            # # 可视化结果并保存 json 结果
-            # for res in result:
-            #     res.print()
-            #     res.save_to_img("output")
-            #     res.save_to_json("output")
-            result_json = result[0].json.get('res')
-            rec_texts = result_json['rec_texts']
 
-            # 使用智能处理器替代原来的简单逻辑
-            tea_info = self.text_processor.process_ocr_texts(rec_texts)
-
-            return {
-                "success": tea_info["success"],
-                "tea_name": tea_info["tea_name"],
-                "tea_type": tea_info["tea_type"],
-                "confidence": tea_info["confidence"],
-                "raw_ocr_texts": tea_info["raw_ocr_texts"],
-                "filtered_texts": tea_info["filtered_texts"],
-                "extraction_method": tea_info["extraction_method"]
-            }
 
         except Exception as e:
             logger.error(f"PaddleOCR识别失败: {e}")
@@ -125,6 +100,7 @@ class PaddleOCREngine:
 # 使用示例
 if __name__ == "__main__":
     # 测试本地图片
-    ocr_engine = PaddleOCREngine()
-    result = ocr_engine.recognize_from_path("/Users/zhangpeng/Desktop/zpskt/ML-learning/tea_recognition/白茶_白茶.jpg")
-    print("OCR结果:", json.dumps(result, ensure_ascii=False, indent=2))
+    ocr_engine = PaddleOCREngine(yaml_file_path="PaddleOCR.yaml")
+    result = ocr_engine.recognize_from_url("https://paddle-model-ecology.bj.bcebos.com/paddlex/imgs/demo_image/general_ocr_002.png")
+    print("OCR结果:", result)
+

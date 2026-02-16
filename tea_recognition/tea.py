@@ -161,7 +161,6 @@ x1 < x2, y1 < y2
 
 if __name__ == '__main__':
 
-
     # 解析JSON响应
     try:
         image_url = "https://tse3-mm.cn.bing.net/th/id/OIP-C.-BvOIK32se-HMSVwHLHI3wHaEJ?w=285&h=180&c=7&r=0&o=7&pid=1.7&rm=3"
