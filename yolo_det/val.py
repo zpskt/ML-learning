@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     # Load a model
     model = YOLO("yolo26n.pt")  # load an official model
-    model = YOLO("/Users/zhangpeng/Desktop/workspace/github/ML-learning/yolo_det/runs/detect/train-5/weights/best.pt")  # load a custom model
+    model = YOLO("/Users/zhangpeng/Desktop/workspace/github/ML-learning/yolo_det/runs/detect/train-8/weights/best.pt")  # load a custom model
 
     # Validate the model
     metrics = model.val()  # no arguments needed, dataset and settings remembered

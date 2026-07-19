@@ -17,5 +17,5 @@ if __name__ == '__main__':
     model = YOLO("yolo26n.yaml").load("yolo26n.pt")  # build from YAML and transfer weights
 
     # Train the model
-    results = model.train(data="my_data.yaml", epochs=100, imgsz=640, device="mps")
+    results = model.train(data="/Users/zhangpeng/Desktop/workspace/github/ML-learning/yolo_det/datasets/Vegetable-Object-Detection/data.yaml", epochs=100, imgsz=640, device="mps")
 
