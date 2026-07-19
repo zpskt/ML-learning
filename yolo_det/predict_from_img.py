@@ -15,6 +15,7 @@ if __name__ == '__main__':
     import cv2  # 用于显示和保存图像
 
     model_path = '/Users/zhangpeng/Desktop/workspace/github/ML-learning/yolo_det/runs/detect/train-8/weights/best.pt'
+    # model_path = 'yolo26n.pt'
     # Load a pretrained YOLO26n model
     model = YOLO(model_path)
     # Define path to the image file
