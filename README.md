@@ -112,13 +112,28 @@ pip install -r requirements.txt
 #### 创建conda环境（推荐）
 
 ```bash
-conda create -n kaggle --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ python=3.9
+conda create -n kaggle --override-channels \
+  -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
+  -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
+  python=3.9
 conda activate food
 pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
-pip install pickle numpy matplotlib -i https://mirrors.aliyun.com/pypi/simple/
+pip install numpy matplotlib -i https://mirrors.aliyun.com/pypi/simple/
+
+
+conda install --override-channels \
+  -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
+  jupyterlab
+
+jupyter lab \
+  --ip=127.0.0.1 \
+  --port=4444 \
+  --no-browser
+
 ```
 
 ## 使用说明
+
 
 ### OpenCV示例运行
 
