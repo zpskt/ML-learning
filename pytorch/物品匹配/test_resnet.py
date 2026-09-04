@@ -45,27 +45,40 @@ def cosine_similarity(embedding_a, embedding_b):
 
 def main():
     device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
+        "mps" if torch.mps.is_available() else "cpu"
     )
 
+    from pathlib import Path
+
+    current_dir = Path.cwd()
+    print(current_dir)
     print("Device:", device)
 
     model, weights = build_resnet50()
     model = model.to(device)
 
     # TODO: 改成你的一张饮品图片
-    image_path = "dataset/cola.jpg"
+    image_path = "dataset/coke/img.png"
+    image_path2 = "dataset/red_tea/img.png"
 
-    embedding = extract_embedding(
+    embedding1 = extract_embedding(
         model,
         weights,
         image_path,
         device
     )
+    embedding2 = extract_embedding(
+        model,
+        weights,
+        image_path2,
+        device
+    )
 
-    print("Embedding shape:", embedding.shape)
-    print("Embedding norm:", torch.norm(embedding, p=2, dim=1))
+    print("Embedding shape:", embedding1.shape)
+    print("Embedding norm:", torch.norm(embedding1, p=2, dim=1))
 
+    similarity = cosine_similarity(embedding1, embedding2)
+    print("Similarity:", similarity)
 
 if __name__ == "__main__":
     main()
