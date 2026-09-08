@@ -39,7 +39,7 @@ LAST_MODEL_PATH = OUTPUT_DIR / "resnet50_last.pth"
 
 BATCH_SIZE = 32
 
-NUM_EPOCHS = 20
+NUM_EPOCHS = 40
 
 LEARNING_RATE = 1e-4
 
@@ -270,9 +270,12 @@ def build_model(
     #
     # 2048 -> num_classes
 
-    model.fc = nn.Linear(
-        2048,
-        num_classes,
+    model.fc = nn.Sequential(
+        # nn.Dropout(p=0.3),
+        nn.Linear(
+            2048,
+            num_classes,
+        ),
     )
 
     model = model.to(device)

@@ -12,9 +12,12 @@ def build_model(device):
         map_location=device
     )
     num_classes = checkpoint["num_classes"]
-    model.fc = nn.Linear(
-        2048,
-        num_classes
+    model.fc = nn.Sequential(
+        # nn.Dropout(p=0.3),
+        nn.Linear(
+            2048,
+            num_classes,
+        ),
     )
 
     model.load_state_dict(
@@ -148,14 +151,14 @@ def main():
     model, transform,idx_to_class = build_model(device)
 
     image_paths = [
-        "test_images/东方树叶/img.png",
-        "test_images/东方树叶/img_1.png",
-        "test_images/东方树叶/img_2.png",
-        "test_images/东方树叶/img_3.png",
-        "test_images/无糖可乐/img.png",
-        "test_images/无糖可乐/img_1.png",
-        "test_images/无糖可乐/img_2.png",
-        "test_images/无糖可乐/img_3.png",
+        "test_images/东方树叶/131_786.jpg",
+        "test_images/东方树叶/131_787.jpg",
+        "test_images/东方树叶/131_788.jpg",
+        "test_images/东方树叶/131_794.jpg",
+        "test_images/无糖可乐/2_457.jpg",
+        "test_images/无糖可乐/2_491.jpg",
+        "test_images/无糖可乐/2_517.jpg",
+        "test_images/无糖可乐/2_529.jpg",
     ]
     results = predict(image_paths, model, transform, idx_to_class, device)
     for result in results:

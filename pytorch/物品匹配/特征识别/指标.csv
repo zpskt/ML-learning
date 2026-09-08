@@ -1,0 +1,4 @@
+模型,top1,Recall@5,Recall@10,Intra-class Similarity,Inter-class Similarity,Separation Gap
+ResNet-fine-tuning,96.50,100,100,0.8210,0.1804,0.6407
+DINOv2-cls,73.57,95.22,98.41,0.6597,0.4453,0.2144
+,,,,,,

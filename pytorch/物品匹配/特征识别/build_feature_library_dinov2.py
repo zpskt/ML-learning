@@ -143,7 +143,9 @@ def extract_batch(
     outputs = model(pixel_values=batch)
 
     # DINOv2 的 CLS Token 作为整张图片的 embedding
-    embeddings = outputs.last_hidden_state[:, 0]
+    # embeddings = outputs.last_hidden_state[:, 0]
+    patch_embeddings = outputs.last_hidden_state[:, 1:]
+    embeddings = patch_embeddings.mean(dim=1)
 
     # L2 Normalize
     embeddings = F.normalize(

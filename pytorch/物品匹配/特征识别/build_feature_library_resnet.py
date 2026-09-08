@@ -53,10 +53,14 @@ def build_model(device):
         map_location=device
     )
     num_classes = checkpoint["num_classes"]
-    model.fc = nn.Linear(
-        2048,
-        num_classes
+    model.fc = nn.Sequential(
+        # nn.Dropout(p=0.3),
+        nn.Linear(
+            2048,
+            num_classes,
+        ),
     )
+
 
     model.load_state_dict(
         checkpoint["model_state_dict"]
