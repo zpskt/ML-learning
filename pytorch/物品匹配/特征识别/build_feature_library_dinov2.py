@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 from transformers import AutoModel
+CHECKPOINT_PATH = Path("./checkpoints/dinov2_best.pth")
 
 
 # =========================
@@ -50,7 +51,32 @@ def get_device():
 # =========================
 
 def build_model(device):
+    #创建原始back bone
     model = AutoModel.from_pretrained(MODEL_NAME)
+    # 2. 加载 Fine-tuning 后的 checkpoint，先加载到内存李米娜
+    checkpoint = torch.load(
+        CHECKPOINT_PATH,
+        map_location="cpu",
+    )
+
+    state_dict = checkpoint["model_state_dict"]
+
+    # 3. checkpoint 里面包含：
+    #    backbone.xxx
+    #    classifier.xxx
+    #
+    #    我们这里只取 backbone
+    backbone_state_dict = {
+        key[len("backbone."):]: value
+        for key, value in state_dict.items()
+        if key.startswith("backbone.")
+    }
+
+    # 4. 把 Fine-tuning 后的权重加载进 DINOv2
+    model.load_state_dict(
+        backbone_state_dict,
+        strict=True,
+    )
 
     model = model.to(device)
     model.eval()
